@@ -94,7 +94,7 @@ public class LiteLLMClient {
         String apiKey = config.getLitellm().getApiKey();
         if (apiKey != null && !apiKey.isBlank()) {
             // API key is intentionally NOT logged
-            headers.setBearerAuth(apiKey);
+            headers.set("x-litellm-api-key", apiKey);
         }
         return headers;
     }
