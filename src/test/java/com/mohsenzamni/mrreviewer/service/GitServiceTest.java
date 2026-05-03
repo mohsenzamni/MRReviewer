@@ -103,4 +103,22 @@ class GitServiceTest {
         assertThat(diff.truncated()).isFalse();
         assertThat(diff.changedFiles()).containsExactly("file.java");
     }
+
+    // ── runGit combines committed and uncommitted file lists ──────────────────
+
+    @Test
+    void runGit_canCombineOutputFromTwoCommands() {
+        // Simulates the file-list merging: echo returns one filename each, duplicates removed
+        String committed = gitService.runGit(tempDir.toFile(), "echo", "LoginService.java");
+        String uncommitted = gitService.runGit(tempDir.toFile(), "echo", "LoginService.java\nUserController.java");
+
+        List<String> merged = java.util.stream.Stream.concat(committed.lines(), uncommitted.lines())
+                .map(String::trim)
+                .filter(l -> !l.isBlank())
+                .distinct()
+                .collect(java.util.stream.Collectors.toList());
+
+        assertThat(merged).containsExactlyInAnyOrder("LoginService.java", "UserController.java");
+        assertThat(merged).hasSize(2); // duplicate LoginService.java is removed
+    }
 }

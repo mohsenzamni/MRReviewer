@@ -12,11 +12,11 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Executes local git commands safely via {@link ProcessBuilder}.
@@ -51,7 +51,9 @@ public class GitService {
     }
 
     /**
-     * Runs {@code git diff <baseBranch>...HEAD} in the configured working directory.
+     * Runs {@code git diff <baseBranch>...HEAD} and {@code git diff HEAD} in the configured
+     * working directory and combines the results, so that both committed branch changes and
+     * uncommitted working-tree changes (staged and unstaged) are included.
      *
      * @return diff result, possibly truncated
      * @throws GitException if git is unavailable, the repo is missing, or the command fails
@@ -62,11 +64,11 @@ public class GitService {
 
         File workDir = resolveWorkingDirectory();
 
-        // 1. Collect changed file names (--name-only)
+        // 1. Collect changed file names from committed branch changes and uncommitted changes
         List<String> changedFiles = listChangedFiles(baseBranch, workDir);
 
         if (changedFiles.isEmpty()) {
-            log.info("No changes detected between {} and HEAD", baseBranch);
+            log.info("No changes detected between {} and HEAD (including working tree)", baseBranch);
             return new GitDiff(List.of(), "", false);
         }
 
@@ -77,16 +79,29 @@ public class GitService {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private List<String> listChangedFiles(String baseBranch, File workDir) {
-        String output = runGit(workDir, "git", "diff", "--name-only",
+        // Committed changes on the current branch vs the base branch merge-base
+        String committedOutput = runGit(workDir, "git", "diff", "--name-only",
                 baseBranch + "...HEAD");
-        return output.lines()
+        // Uncommitted changes (both staged and unstaged) relative to HEAD
+        String uncommittedOutput = runGit(workDir, "git", "diff", "--name-only", "HEAD");
+
+        return Stream.concat(
+                committedOutput.lines(),
+                uncommittedOutput.lines()
+        )
                 .map(String::trim)
                 .filter(l -> !l.isBlank())
+                .distinct()
                 .collect(Collectors.toList());
     }
 
     private GitDiff buildDiff(String baseBranch, File workDir, List<String> changedFiles) {
-        String rawPatch = runGit(workDir, "git", "diff", baseBranch + "...HEAD");
+        // Combine committed branch diff with uncommitted working-tree diff
+        String committedPatch = runGit(workDir, "git", "diff", baseBranch + "...HEAD");
+        String uncommittedPatch = runGit(workDir, "git", "diff", "HEAD");
+        String rawPatch = uncommittedPatch.isBlank()
+                ? committedPatch
+                : committedPatch + "\n" + uncommittedPatch;
 
         int maxLines = config.getGit().getMaxDiffLines();
         List<String> lines = rawPatch.lines().collect(Collectors.toList());
