@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: MRReviewer
+
+server:
+  port: 8080
+
+app:
+  gitlab:
+    # Base URL of your GitLab instance (no trailing slash)
+    base-url: ${GITLAB_BASE_URL:https://gitlab.com}
+    # Personal Access Token with read_api scope (never logged)
+    token: ${GITLAB_TOKEN:}
+
+  litellm:
+    # LiteLLM proxy base URL (no trailing slash)
+    base-url: ${LITELLM_BASE_URL:http://localhost:4000}
+    # API key for the LiteLLM proxy (never logged)
+    api-key: ${LITELLM_API_KEY:}
+    # Model name forwarded to LiteLLM
+    model-name: ${MODEL_NAME:gpt-4o}
+
+  git:
+    # Absolute or relative path to the git repository to analyse
+    # Defaults to the current working directory of the JVM process
+    working-dir: ${GIT_WORKING_DIR:.}
+    # Remote base branch for the diff  (git diff <base-branch>...HEAD)
+    base-branch: ${GIT_BASE_BRANCH:origin/main}
+    # Hard cap on diff lines sent to the LLM (avoids token-limit errors)
+    max-diff-lines: ${GIT_MAX_DIFF_LINES:2000}
