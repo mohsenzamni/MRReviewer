@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mohsenzamni.mrreviewer.client.GitLabClient;
 import com.mohsenzamni.mrreviewer.client.LiteLLMClient;
 import com.mohsenzamni.mrreviewer.config.AppConfig;
+import com.mohsenzamni.mrreviewer.dto.Finding;
 import com.mohsenzamni.mrreviewer.dto.GitDiff;
 import com.mohsenzamni.mrreviewer.dto.GitLabIssue;
 import com.mohsenzamni.mrreviewer.dto.ReviewRequest;
@@ -28,8 +29,8 @@ import java.util.stream.Collectors;
  *   <li>Parse the GitLab issue URL and fetch issue metadata.</li>
  *   <li>Retrieve the local git diff.</li>
  *   <li>Filter the diff to files relevant to the issue.</li>
- *   <li>Build a structured prompt and call the LLM.</li>
- *   <li>Parse the JSON response and return a {@link ReviewResponse}.</li>
+ *   <li>Build a structured prompt (including reviewer skills and past review history) and call the LLM.</li>
+ *   <li>Parse the JSON response, persist to history, and return a {@link ReviewResponse}.</li>
  * </ol>
  */
 @Service
@@ -39,25 +40,44 @@ public class ReviewService {
 
     // ── Prompt constants ──────────────────────────────────────────────────────
 
-    private static final String SYSTEM_PROMPT = """
-            You are a senior software engineer performing a pre-push code review.
-            You will receive a GitLab issue (title + description) and a git diff of local changes.
+    /**
+     * System prompt template.  {@code %s} is replaced with the caller-supplied reviewer skills.
+     */
+    private static final String SYSTEM_PROMPT_TEMPLATE = """
+            You are an expert software engineer performing a pre-push code review.
             
-            Your task:
+            Your reviewer focus areas / skill set:
+            %s
+            
+            You will receive:
+            - A GitLab issue (title + description).
+            - Optionally, a history of previous review cycles for this issue.
+            - A git diff of the current local changes.
+            
+            Your tasks:
             1. Summarize the issue in one or two sentences.
-            2. Extract the expected behavior / acceptance criteria.
+            2. Extract the expected behavior / acceptance criteria from the issue.
             3. Analyze the code changes in the diff.
             4. Map each change to the expected behavior.
             5. Identify missing implementations that the issue requires but the diff does not provide.
+               For each gap, assign a severity: CRITICAL, HIGH, MEDIUM, or LOW.
+               - CRITICAL: blocks correctness or introduces a security vulnerability.
+               - HIGH: significant functional gap or likely bug.
+               - MEDIUM: partial implementation or questionable quality.
+               - LOW: minor improvement opportunity or style issue.
             6. Identify unrelated changes that are present in the diff but do not relate to the issue.
-            7. Produce a final verdict: FULLY_RESOLVED, PARTIALLY_RESOLVED, or NOT_RESOLVED.
-            8. Provide a confidence score between 0.0 and 1.0.
+            7. Consider the previous review cycles (if any) to track whether past findings have been addressed.
+            8. Produce a final verdict: FULLY_RESOLVED, PARTIALLY_RESOLVED, or NOT_RESOLVED.
+            9. Provide a confidence score between 0.0 and 1.0.
             
             You MUST respond with ONLY a single valid JSON object — no markdown, no prose outside the JSON.
             The JSON must conform exactly to this schema:
             {
               "summary": "<string>",
-              "gaps": ["<string>", ...],
+              "gaps": [
+                { "description": "<string>", "severity": "CRITICAL|HIGH|MEDIUM|LOW" },
+                ...
+              ],
               "unrelated_changes": ["<string>", ...],
               "verdict": "FULLY_RESOLVED | PARTIALLY_RESOLVED | NOT_RESOLVED",
               "confidence": <number 0-1>
@@ -65,6 +85,7 @@ public class ReviewService {
             """;
 
     private static final String USER_PROMPT_TEMPLATE = """
+            %s
             ## Issue
             
             **Title:** %s
@@ -93,17 +114,19 @@ public class ReviewService {
     private final GitLabClient gitLabClient;
     private final GitService gitService;
     private final LiteLLMClient liteLLMClient;
+    private final ReviewHistoryService historyService;
     private final ObjectMapper objectMapper;
     private final AppConfig config;
 
     public ReviewService(GitLabClient gitLabClient, GitService gitService,
-                         LiteLLMClient liteLLMClient, ObjectMapper objectMapper,
-                         AppConfig config) {
-        this.gitLabClient = gitLabClient;
-        this.gitService   = gitService;
-        this.liteLLMClient = liteLLMClient;
-        this.objectMapper  = objectMapper;
-        this.config        = config;
+                         LiteLLMClient liteLLMClient, ReviewHistoryService historyService,
+                         ObjectMapper objectMapper, AppConfig config) {
+        this.gitLabClient   = gitLabClient;
+        this.gitService     = gitService;
+        this.liteLLMClient  = liteLLMClient;
+        this.historyService = historyService;
+        this.objectMapper   = objectMapper;
+        this.config         = config;
     }
 
     /**
@@ -123,7 +146,7 @@ public class ReviewService {
             log.warn("No local changes detected — returning NOT_RESOLVED");
             return new ReviewResponse(
                     "No local changes were found between HEAD and the base branch.",
-                    List.of("No code changes detected in local branch."),
+                    List.of(new Finding("No code changes detected in local branch.", "HIGH")),
                     List.of(),
                     "NOT_RESOLVED",
                     1.0
@@ -136,7 +159,7 @@ public class ReviewService {
             log.warn("No relevant files found after filtering — returning NOT_RESOLVED");
             return new ReviewResponse(
                     "Local changes exist but none appear related to issue: " + issue.title(),
-                    List.of("None of the changed files match issue keywords."),
+                    List.of(new Finding("None of the changed files match issue keywords.", "HIGH")),
                     diff.changedFiles(),
                     "NOT_RESOLVED",
                     0.9
@@ -144,11 +167,17 @@ public class ReviewService {
         }
 
         // 4. Build prompt and call LLM
-        String userPrompt = buildUserPrompt(issue, filteredDiff);
-        String llmResponse = liteLLMClient.chat(SYSTEM_PROMPT, userPrompt);
+        String systemPrompt = SYSTEM_PROMPT_TEMPLATE.formatted(request.effectiveSkills());
+        String userPrompt = buildUserPrompt(issue, filteredDiff, request.issueUrl());
+        String llmResponse = liteLLMClient.chat(systemPrompt, userPrompt);
 
         // 5. Parse LLM JSON response
-        return parseResponse(llmResponse);
+        ReviewResponse response = parseResponse(llmResponse);
+
+        // 6. Persist review to history for future cycles
+        historyService.add(request.issueUrl(), response);
+
+        return response;
     }
 
     // ── Diff filtering ────────────────────────────────────────────────────────
@@ -226,13 +255,16 @@ public class ReviewService {
 
     // ── Prompt building ───────────────────────────────────────────────────────
 
-    private String buildUserPrompt(GitLabIssue issue, GitDiff diff) {
+    private String buildUserPrompt(GitLabIssue issue, GitDiff diff, String issueUrl) {
         String fileList = diff.changedFiles().stream()
                 .map(f -> "- " + f)
                 .collect(Collectors.joining("\n"));
 
         String baseBranch = config.getGit().getBaseBranch();
+        String historyBlock = historyService.formatHistory(issueUrl);
+
         return USER_PROMPT_TEMPLATE.formatted(
+                historyBlock,
                 issue.title(),
                 issue.description(),
                 baseBranch,
@@ -251,7 +283,7 @@ public class ReviewService {
                     new TypeReference<>() {});
 
             String summary = getString(map, "summary", "N/A");
-            List<String> gaps = getStringList(map, "gaps");
+            List<Finding> gaps = findingList(map, "gaps");
             List<String> unrelated = getStringList(map, "unrelated_changes");
             String verdict = getString(map, "verdict", "NOT_RESOLVED");
             double confidence = getDouble(map, "confidence", 0.0);
@@ -276,6 +308,26 @@ public class ReviewService {
     }
 
     @SuppressWarnings("unchecked")
+    private List<Finding> findingList(Map<String, Object> map, String key) {
+        Object val = map.get(key);
+        if (val instanceof List<?> list) {
+            return list.stream()
+                    .filter(o -> o instanceof Map)
+                    .map(o -> {
+                        Map<String, Object> entry = (Map<String, Object>) o;
+                        String desc = entry.get("description") instanceof String s ? s : String.valueOf(entry.get("description"));
+                        String sev = entry.get("severity") instanceof String sv ? sv.toUpperCase(Locale.ROOT) : "MEDIUM";
+                        if (!List.of("CRITICAL", "HIGH", "MEDIUM", "LOW").contains(sev)) {
+                            sev = "MEDIUM";
+                        }
+                        return new Finding(desc, sev);
+                    })
+                    .collect(Collectors.toList());
+        }
+        return Collections.emptyList();
+    }
+
+    @SuppressWarnings("unchecked")
     private List<String> getStringList(Map<String, Object> map, String key) {
         Object val = map.get(key);
         if (val instanceof List<?> list) {
@@ -295,3 +347,4 @@ public class ReviewService {
         return defaultVal;
     }
 }
+

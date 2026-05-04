@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MR Reviewer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    .container { max-width: 860px; margin: 0 auto; }
+
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #f8fafc;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle { color: #94a3b8; font-size: 0.95rem; margin-bottom: 2rem; }
+
+    .card {
+      background: #1e2130;
+      border: 1px solid #2d3348;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #cbd5e1;
+      margin-bottom: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    label {
+      display: block;
+      font-size: 0.875rem;
+      color: #94a3b8;
+      margin-bottom: 0.4rem;
+    }
+    input[type="text"], textarea {
+      width: 100%;
+      background: #0f1117;
+      border: 1px solid #2d3348;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 0.9rem;
+      padding: 0.6rem 0.85rem;
+      outline: none;
+      transition: border-color 0.15s;
+      font-family: inherit;
+    }
+    input[type="text"]:focus, textarea:focus { border-color: #6366f1; }
+    textarea { resize: vertical; min-height: 110px; }
+
+    .form-row { margin-bottom: 1.1rem; }
+    .form-row:last-child { margin-bottom: 0; }
+
+    button[type="submit"] {
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.7rem 1.6rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    button[type="submit"]:hover { background: #4f46e5; }
+    button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Result card ── */
+    #result { display: none; }
+
+    .verdict-badge {
+      display: inline-block;
+      padding: 0.3rem 0.9rem;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.04em;
+      margin-bottom: 1rem;
+    }
+    .verdict-FULLY_RESOLVED   { background: #14532d; color: #86efac; }
+    .verdict-PARTIALLY_RESOLVED { background: #78350f; color: #fcd34d; }
+    .verdict-NOT_RESOLVED     { background: #7f1d1d; color: #fca5a5; }
+
+    .confidence-row {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      margin-bottom: 1rem;
+    }
+    .confidence-bar-bg {
+      background: #2d3348;
+      border-radius: 999px;
+      height: 6px;
+      margin-top: 0.4rem;
+    }
+    .confidence-bar-fill {
+      height: 6px;
+      border-radius: 999px;
+      background: #6366f1;
+      transition: width 0.4s ease;
+    }
+
+    .summary-text { color: #cbd5e1; font-size: 0.95rem; line-height: 1.6; margin-bottom: 1.2rem; }
+
+    .section-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #64748b;
+      margin-bottom: 0.6rem;
+    }
+
+    .finding-list { list-style: none; }
+    .finding-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.6rem;
+      padding: 0.55rem 0;
+      border-bottom: 1px solid #1e2130;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+    .finding-item:last-child { border-bottom: none; }
+
+    .sev-badge {
+      flex-shrink: 0;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .sev-CRITICAL { background: #450a0a; color: #fca5a5; }
+    .sev-HIGH     { background: #431407; color: #fdba74; }
+    .sev-MEDIUM   { background: #422006; color: #fcd34d; }
+    .sev-LOW      { background: #052e16; color: #86efac; }
+
+    .tag-list { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .tag {
+      background: #1e2130;
+      border: 1px solid #2d3348;
+      border-radius: 6px;
+      padding: 0.25rem 0.65rem;
+      font-size: 0.82rem;
+      color: #94a3b8;
+    }
+
+    /* ── Loading & error ── */
+    #loading { display: none; color: #94a3b8; font-size: 0.9rem; margin-top: 0.8rem; }
+    #error-msg { display: none; color: #fca5a5; font-size: 0.9rem; margin-top: 0.8rem; }
+
+    /* ── History badge ── */
+    #history-note {
+      display: none;
+      background: #1e2d40;
+      border: 1px solid #2d4a6b;
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      color: #7dd3fc;
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <h1>🔍 MR Reviewer</h1>
+  <p class="subtitle">AI-powered pre-push code review — analyze your local branch against a GitLab issue before you push.</p>
+
+  <!-- ── Form ── -->
+  <div class="card">
+    <h2>Review Configuration</h2>
+    <form id="review-form">
+
+      <div class="form-row">
+        <label for="issueUrl">GitLab Issue URL <span style="color:#ef4444">*</span></label>
+        <input type="text" id="issueUrl" name="issueUrl" required
+               placeholder="https://gitlab.example.com/group/project/-/issues/42"/>
+      </div>
+
+      <div class="form-row">
+        <label for="reviewerSkills">Reviewer Skills / Focus Areas</label>
+        <textarea id="reviewerSkills" name="reviewerSkills"
+                  placeholder="Leave blank to use the default skill set"></textarea>
+        <div style="margin-top:0.4rem; display:flex; justify-content:flex-end;">
+          <button type="button" id="reset-skills"
+                  style="background:none;border:none;color:#6366f1;font-size:0.8rem;cursor:pointer;padding:0;">
+            ↺ Reset to defaults
+          </button>
+        </div>
+      </div>
+
+      <button type="submit" id="submit-btn">Run Review</button>
+      <div id="loading">⏳ Analyzing your branch… this may take a few seconds.</div>
+      <div id="error-msg"></div>
+    </form>
+  </div>
+
+  <!-- ── Result ── -->
+  <div class="card" id="result">
+    <h2>Review Result</h2>
+
+    <div id="history-note"></div>
+
+    <div id="verdict-badge" class="verdict-badge"></div>
+
+    <div class="confidence-row">
+      Confidence: <strong id="confidence-pct"></strong>
+      <div class="confidence-bar-bg">
+        <div class="confidence-bar-fill" id="confidence-bar" style="width:0%"></div>
+      </div>
+    </div>
+
+    <div class="summary-text" id="summary-text"></div>
+
+    <div id="gaps-section" style="margin-bottom:1.2rem;">
+      <div class="section-title">Gaps &amp; Issues Found</div>
+      <ul class="finding-list" id="gaps-list"></ul>
+    </div>
+
+    <div id="unrelated-section">
+      <div class="section-title">Unrelated Changes</div>
+      <div class="tag-list" id="unrelated-list"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const DEFAULT_SKILLS =
+    "Security vulnerabilities, Performance, Code quality and readability, " +
+    "Test coverage, SOLID principles, Design patterns, Error handling, " +
+    "API contract correctness, Naming conventions";
+
+  const skillsField = document.getElementById("reviewerSkills");
+  skillsField.value = DEFAULT_SKILLS;
+
+  document.getElementById("reset-skills").addEventListener("click", () => {
+    skillsField.value = DEFAULT_SKILLS;
+  });
+
+  let reviewCount = {};
+
+  document.getElementById("review-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const issueUrl      = document.getElementById("issueUrl").value.trim();
+    const reviewerSkills = skillsField.value.trim();
+    const submitBtn     = document.getElementById("submit-btn");
+    const loading       = document.getElementById("loading");
+    const errorDiv      = document.getElementById("error-msg");
+    const resultCard    = document.getElementById("result");
+
+    submitBtn.disabled = true;
+    loading.style.display = "block";
+    errorDiv.style.display = "none";
+    resultCard.style.display = "none";
+
+    try {
+      const resp = await fetch("/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ issueUrl, reviewerSkills }),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`Server returned ${resp.status}: ${text}`);
+      }
+
+      const data = await resp.json();
+      reviewCount[issueUrl] = (reviewCount[issueUrl] || 0) + 1;
+      renderResult(data, issueUrl, reviewCount[issueUrl]);
+
+    } catch (err) {
+      errorDiv.textContent = "❌ " + err.message;
+      errorDiv.style.display = "block";
+    } finally {
+      submitBtn.disabled = false;
+      loading.style.display = "none";
+    }
+  });
+
+  function renderResult(data, issueUrl, cycle) {
+    const resultCard = document.getElementById("result");
+    resultCard.style.display = "block";
+
+    // History note
+    const histNote = document.getElementById("history-note");
+    if (cycle > 1) {
+      histNote.textContent = `📋 This is review cycle #${cycle} for this issue. Past review history has been included in the analysis.`;
+      histNote.style.display = "block";
+    } else {
+      histNote.style.display = "none";
+    }
+
+    // Verdict
+    const badge = document.getElementById("verdict-badge");
+    badge.textContent = data.verdict.replace(/_/g, " ");
+    badge.className = "verdict-badge verdict-" + data.verdict;
+
+    // Confidence
+    const pct = Math.round(data.confidence * 100);
+    document.getElementById("confidence-pct").textContent = pct + "%";
+    document.getElementById("confidence-bar").style.width = pct + "%";
+
+    // Summary
+    document.getElementById("summary-text").textContent = data.summary;
+
+    // Gaps
+    const gapsList = document.getElementById("gaps-list");
+    gapsList.innerHTML = "";
+    const gapsSection = document.getElementById("gaps-section");
+    if (data.gaps && data.gaps.length > 0) {
+      gapsSection.style.display = "block";
+      data.gaps.forEach(f => {
+        const li = document.createElement("li");
+        li.className = "finding-item";
+        const sev = (f.severity || "MEDIUM").toUpperCase();
+        li.innerHTML = `<span class="sev-badge sev-${sev}">${sev}</span><span>${escapeHtml(f.description)}</span>`;
+        gapsList.appendChild(li);
+      });
+    } else {
+      gapsSection.style.display = "none";
+    }
+
+    // Unrelated changes
+    const unrelatedList = document.getElementById("unrelated-list");
+    unrelatedList.innerHTML = "";
+    const unrelatedSection = document.getElementById("unrelated-section");
+    const unrelated = data.unrelated_changes || [];
+    if (unrelated.length > 0) {
+      unrelatedSection.style.display = "block";
+      unrelated.forEach(f => {
+        const span = document.createElement("span");
+        span.className = "tag";
+        span.textContent = f;
+        unrelatedList.appendChild(span);
+      });
+    } else {
+      unrelatedSection.style.display = "none";
+    }
+
+    resultCard.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+</script>
+</body>
+</html>

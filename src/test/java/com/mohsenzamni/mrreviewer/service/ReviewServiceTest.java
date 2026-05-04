@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mohsenzamni.mrreviewer.client.GitLabClient;
 import com.mohsenzamni.mrreviewer.client.LiteLLMClient;
 import com.mohsenzamni.mrreviewer.config.AppConfig;
+import com.mohsenzamni.mrreviewer.dto.Finding;
 import com.mohsenzamni.mrreviewer.dto.GitDiff;
 import com.mohsenzamni.mrreviewer.dto.GitLabIssue;
 import com.mohsenzamni.mrreviewer.dto.ReviewRequest;
@@ -34,12 +35,19 @@ class ReviewServiceTest {
     private LiteLLMClient liteLLMClient;
 
     private ReviewService reviewService;
+    private ReviewHistoryService historyService;
+
+    /** Convenience factory — no custom skills. */
+    private static ReviewRequest req(String issueUrl) {
+        return new ReviewRequest(issueUrl, null);
+    }
 
     @BeforeEach
     void setUp() {
         AppConfig config = new AppConfig();
+        historyService = new ReviewHistoryService();
         reviewService = new ReviewService(gitLabClient, gitService, liteLLMClient,
-                new ObjectMapper(), config);
+                historyService, new ObjectMapper(), config);
     }
 
     // ── No local changes ──────────────────────────────────────────────────────
@@ -51,8 +59,7 @@ class ReviewServiceTest {
         when(gitService.getDiff())
                 .thenReturn(new GitDiff(List.of(), "", false));
 
-        ReviewResponse response = reviewService.review(
-                new ReviewRequest("https://gitlab.com/org/proj/-/issues/1"));
+        ReviewResponse response = reviewService.review(req("https://gitlab.com/org/proj/-/issues/1"));
 
         assertThat(response.verdict()).isEqualTo("NOT_RESOLVED");
         assertThat(response.confidence()).isEqualTo(1.0);
@@ -69,18 +76,17 @@ class ReviewServiceTest {
         when(gitService.getDiff())
                 .thenReturn(new GitDiff(List.of("readme.md"), "diff content", false));
 
-        ReviewResponse response = reviewService.review(
-                new ReviewRequest("https://gitlab.com/org/proj/-/issues/2"));
+        ReviewResponse response = reviewService.review(req("https://gitlab.com/org/proj/-/issues/2"));
 
         assertThat(response.verdict()).isEqualTo("NOT_RESOLVED");
         assertThat(response.unrelatedChanges()).contains("readme.md");
         verifyNoInteractions(liteLLMClient);
     }
 
-    // ── Successful LLM review ─────────────────────────────────────────────────
+    // ── Successful LLM review — severity in gaps ──────────────────────────────
 
     @Test
-    void review_returnsLlmResponse_onSuccess() {
+    void review_returnsLlmResponse_withSeverityFindings() {
         when(gitLabClient.fetchIssue(any()))
                 .thenReturn(new GitLabIssue(3L, "Add login feature",
                         "Implement login endpoint."));
@@ -92,21 +98,117 @@ class ReviewServiceTest {
         String llmJson = """
                 {
                   "summary": "Adds login endpoint",
-                  "gaps": [],
+                  "gaps": [
+                    { "description": "Missing rate-limiting on login endpoint", "severity": "HIGH" },
+                    { "description": "No unit tests for the new endpoint", "severity": "MEDIUM" }
+                  ],
                   "unrelated_changes": [],
-                  "verdict": "FULLY_RESOLVED",
-                  "confidence": 0.95
+                  "verdict": "PARTIALLY_RESOLVED",
+                  "confidence": 0.80
                 }
                 """;
         when(liteLLMClient.chat(anyString(), anyString())).thenReturn(llmJson);
 
-        ReviewResponse response = reviewService.review(
-                new ReviewRequest("https://gitlab.com/org/proj/-/issues/3"));
+        ReviewResponse response = reviewService.review(req("https://gitlab.com/org/proj/-/issues/3"));
 
-        assertThat(response.verdict()).isEqualTo("FULLY_RESOLVED");
-        assertThat(response.confidence()).isEqualTo(0.95);
+        assertThat(response.verdict()).isEqualTo("PARTIALLY_RESOLVED");
+        assertThat(response.confidence()).isEqualTo(0.80);
         assertThat(response.summary()).isEqualTo("Adds login endpoint");
-        assertThat(response.gaps()).isEmpty();
+        assertThat(response.gaps()).hasSize(2);
+        assertThat(response.gaps()).extracting(Finding::severity)
+                .containsExactly("HIGH", "MEDIUM");
+        assertThat(response.gaps()).extracting(Finding::description)
+                .contains("Missing rate-limiting on login endpoint");
+    }
+
+    // ── Reviewer skills — default used when none supplied ────────────────────
+
+    @Test
+    void reviewRequest_usesDefaultSkills_whenNoneProvided() {
+        ReviewRequest req = new ReviewRequest("https://gitlab.com/org/proj/-/issues/1", null);
+        assertThat(req.effectiveSkills()).isEqualTo(ReviewRequest.DEFAULT_SKILLS);
+    }
+
+    @Test
+    void reviewRequest_usesCustomSkills_whenProvided() {
+        ReviewRequest req = new ReviewRequest("https://gitlab.com/org/proj/-/issues/1", "Security only");
+        assertThat(req.effectiveSkills()).isEqualTo("Security only");
+    }
+
+    // ── Review history — stored and formatted ─────────────────────────────────
+
+    @Test
+    void history_isStoredAfterSuccessfulReview() {
+        String issueUrl = "https://gitlab.com/org/proj/-/issues/10";
+        when(gitLabClient.fetchIssue(any()))
+                .thenReturn(new GitLabIssue(10L, "Auth refactor", "Refactor auth module."));
+        when(gitService.getDiff())
+                .thenReturn(new GitDiff(List.of("AuthService.java"),
+                        "diff --git a/AuthService.java ...", false));
+        when(liteLLMClient.chat(anyString(), anyString())).thenReturn("""
+                {
+                  "summary": "First review",
+                  "gaps": [],
+                  "unrelated_changes": [],
+                  "verdict": "PARTIALLY_RESOLVED",
+                  "confidence": 0.6
+                }
+                """);
+
+        reviewService.review(new ReviewRequest(issueUrl, null));
+
+        assertThat(historyService.get(issueUrl)).hasSize(1);
+        assertThat(historyService.get(issueUrl).get(0).verdict()).isEqualTo("PARTIALLY_RESOLVED");
+    }
+
+    @Test
+    void history_formatHistory_includesVerdictAndFindings() {
+        String issueUrl = "https://gitlab.com/org/proj/-/issues/11";
+        ReviewResponse past = new ReviewResponse(
+                "Added login endpoint",
+                List.of(new Finding("Missing tests", "MEDIUM")),
+                List.of(),
+                "PARTIALLY_RESOLVED",
+                0.7
+        );
+        historyService.add(issueUrl, past);
+
+        String formatted = historyService.formatHistory(issueUrl);
+
+        assertThat(formatted).contains("PARTIALLY_RESOLVED");
+        assertThat(formatted).contains("Missing tests");
+        assertThat(formatted).contains("MEDIUM");
+    }
+
+    @Test
+    void history_returnsEmpty_whenNoHistory() {
+        assertThat(historyService.formatHistory("https://gitlab.com/org/proj/-/issues/999"))
+                .isBlank();
+    }
+
+    // ── Severity normalisation ────────────────────────────────────────────────
+
+    @Test
+    void review_normalisesSeverity_forUnknownValue() {
+        when(gitLabClient.fetchIssue(any()))
+                .thenReturn(new GitLabIssue(12L, "Auth refactor", "Refactor auth module."));
+        when(gitService.getDiff())
+                .thenReturn(new GitDiff(List.of("AuthService.java"),
+                        "diff --git a/AuthService.java ...", false));
+        when(liteLLMClient.chat(anyString(), anyString())).thenReturn("""
+                {
+                  "summary": "S",
+                  "gaps": [ { "description": "issue", "severity": "SUPER_CRITICAL" } ],
+                  "unrelated_changes": [],
+                  "verdict": "NOT_RESOLVED",
+                  "confidence": 0.5
+                }
+                """);
+
+        ReviewResponse response = reviewService.review(req("https://gitlab.com/org/proj/-/issues/12"));
+
+        assertThat(response.gaps()).hasSize(1);
+        assertThat(response.gaps().get(0).severity()).isEqualTo("MEDIUM");
     }
 
     // ── Keyword extraction ────────────────────────────────────────────────────
@@ -172,8 +274,7 @@ class ReviewServiceTest {
                 }
                 """);
 
-        ReviewResponse response = reviewService.review(
-                new ReviewRequest("https://gitlab.com/org/proj/-/issues/7"));
+        ReviewResponse response = reviewService.review(req("https://gitlab.com/org/proj/-/issues/7"));
 
         assertThat(response.verdict()).isEqualTo("NOT_RESOLVED");
     }
@@ -200,8 +301,7 @@ class ReviewServiceTest {
                 }
                 """);
 
-        ReviewResponse response = reviewService.review(
-                new ReviewRequest("https://gitlab.com/org/proj/-/issues/8"));
+        ReviewResponse response = reviewService.review(req("https://gitlab.com/org/proj/-/issues/8"));
 
         assertThat(response.confidence()).isEqualTo(1.0);
     }
@@ -220,8 +320,7 @@ class ReviewServiceTest {
         when(liteLLMClient.chat(anyString(), anyString())).thenReturn("not json at all");
 
         assertThatThrownBy(
-                () -> reviewService.review(
-                        new ReviewRequest("https://gitlab.com/org/proj/-/issues/9")))
+                () -> reviewService.review(req("https://gitlab.com/org/proj/-/issues/9")))
                 .isInstanceOf(LLMException.class)
                 .hasMessageContaining("Failed to parse LLM JSON response");
     }
