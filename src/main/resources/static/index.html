@@ -15,7 +15,7 @@
       padding: 2rem 1rem;
     }
 
-    .container { max-width: 860px; margin: 0 auto; }
+    .container { max-width: 1000px; margin: 0 auto; }
 
     h1 {
       font-size: 1.75rem;
@@ -82,73 +82,161 @@
     /* ── Result card ── */
     #result { display: none; }
 
+    /* ── Executive summary box ── */
+    .exec-summary {
+      background: #161b2e;
+      border: 1px solid #2d3f6b;
+      border-left: 4px solid #6366f1;
+      border-radius: 8px;
+      padding: 1rem 1.2rem;
+      color: #cbd5e1;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      margin-bottom: 1.5rem;
+    }
+
+    /* ── Verdict + confidence row ── */
+    .verdict-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.2rem;
+      flex-wrap: wrap;
+    }
     .verdict-badge {
       display: inline-block;
-      padding: 0.3rem 0.9rem;
+      padding: 0.35rem 1rem;
       border-radius: 999px;
       font-weight: 700;
       font-size: 0.85rem;
       letter-spacing: 0.04em;
-      margin-bottom: 1rem;
     }
-    .verdict-FULLY_RESOLVED   { background: #14532d; color: #86efac; }
+    .verdict-FULLY_RESOLVED     { background: #14532d; color: #86efac; }
     .verdict-PARTIALLY_RESOLVED { background: #78350f; color: #fcd34d; }
-    .verdict-NOT_RESOLVED     { background: #7f1d1d; color: #fca5a5; }
+    .verdict-NOT_RESOLVED       { background: #7f1d1d; color: #fca5a5; }
 
-    .confidence-row {
-      font-size: 0.85rem;
-      color: #94a3b8;
-      margin-bottom: 1rem;
-    }
-    .confidence-bar-bg {
-      background: #2d3348;
-      border-radius: 999px;
-      height: 6px;
-      margin-top: 0.4rem;
-    }
-    .confidence-bar-fill {
-      height: 6px;
-      border-radius: 999px;
-      background: #6366f1;
-      transition: width 0.4s ease;
-    }
+    .confidence-widget { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #94a3b8; flex: 1; min-width: 160px; }
+    .confidence-bar-bg { flex: 1; background: #2d3348; border-radius: 999px; height: 6px; }
+    .confidence-bar-fill { height: 6px; border-radius: 999px; background: #6366f1; transition: width 0.4s ease; }
 
-    .summary-text { color: #cbd5e1; font-size: 0.95rem; line-height: 1.6; margin-bottom: 1.2rem; }
+    /* ── Addressed items ── */
+    .addressed-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1.2rem;
+    }
+    .addressed-item {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      background: #0d2818;
+      border: 1px solid #166534;
+      border-radius: 6px;
+      padding: 0.3rem 0.7rem;
+      font-size: 0.83rem;
+      color: #86efac;
+    }
+    .addressed-item::before { content: "✓"; font-weight: 700; }
 
-    .section-title {
-      font-size: 0.8rem;
+    /* ── Section headers ── */
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      margin-top: 1.4rem;
+    }
+    .section-header:first-of-type { margin-top: 0; }
+    .section-header h3 {
+      font-size: 0.78rem;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.07em;
+      letter-spacing: 0.08em;
       color: #64748b;
-      margin-bottom: 0.6rem;
+    }
+    .section-count {
+      font-size: 0.72rem;
+      background: #2d3348;
+      color: #94a3b8;
+      border-radius: 999px;
+      padding: 0.1rem 0.5rem;
+      font-weight: 600;
     }
 
-    .finding-list { list-style: none; }
-    .finding-item {
-      display: flex;
-      align-items: flex-start;
-      gap: 0.6rem;
-      padding: 0.55rem 0;
-      border-bottom: 1px solid #1e2130;
-      font-size: 0.9rem;
+    /* ── Findings table ── */
+    .findings-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    .findings-table th {
+      text-align: left;
+      color: #64748b;
+      font-weight: 600;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid #2d3348;
+    }
+    .findings-table td {
+      padding: 0.75rem;
+      vertical-align: top;
+      border-bottom: 1px solid #1a1f30;
       line-height: 1.5;
     }
-    .finding-item:last-child { border-bottom: none; }
+    .findings-table tr:last-child td { border-bottom: none; }
+    .findings-table tr:hover td { background: #1a1f2e; }
 
-    .sev-badge {
-      flex-shrink: 0;
-      padding: 0.15rem 0.5rem;
-      border-radius: 4px;
-      font-size: 0.72rem;
+    .finding-id {
+      font-family: monospace;
       font-weight: 700;
-      letter-spacing: 0.04em;
+      font-size: 0.85rem;
+      white-space: nowrap;
     }
-    .sev-CRITICAL { background: #450a0a; color: #fca5a5; }
-    .sev-HIGH     { background: #431407; color: #fdba74; }
-    .sev-MEDIUM   { background: #422006; color: #fcd34d; }
-    .sev-LOW      { background: #052e16; color: #86efac; }
+    .sev-CRITICAL .finding-id { color: #fca5a5; }
+    .sev-HIGH     .finding-id { color: #fdba74; }
+    .sev-MEDIUM   .finding-id { color: #fcd34d; }
+    .sev-LOW      .finding-id { color: #86efac; }
 
+    .file-loc {
+      font-family: monospace;
+      font-size: 0.78rem;
+      color: #818cf8;
+      white-space: nowrap;
+    }
+    .no-location { color: #475569; font-size: 0.78rem; font-style: italic; }
+
+    .finding-desc { color: #e2e8f0; margin-bottom: 0.5rem; }
+    .finding-rec {
+      color: #94a3b8;
+      font-size: 0.83rem;
+      border-left: 2px solid #334155;
+      padding-left: 0.6rem;
+      margin-top: 0.4rem;
+    }
+    .finding-rec::before { content: "→ "; color: #6366f1; font-weight: 700; }
+
+    /* ── Severity section separators ── */
+    .sev-group-header td {
+      padding: 0.5rem 0.75rem 0.25rem;
+      border-bottom: none;
+    }
+    .sev-label {
+      display: inline-block;
+      padding: 0.2rem 0.7rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+    .sev-label-CRITICAL { background: #450a0a; color: #fca5a5; }
+    .sev-label-HIGH     { background: #431407; color: #fdba74; }
+    .sev-label-MEDIUM   { background: #422006; color: #fcd34d; }
+    .sev-label-LOW      { background: #052e16; color: #86efac; }
+
+    /* ── Unrelated changes ── */
     .tag-list { display: flex; flex-wrap: wrap; gap: 0.4rem; }
     .tag {
       background: #1e2130;
@@ -159,11 +247,7 @@
       color: #94a3b8;
     }
 
-    /* ── Loading & error ── */
-    #loading { display: none; color: #94a3b8; font-size: 0.9rem; margin-top: 0.8rem; }
-    #error-msg { display: none; color: #fca5a5; font-size: 0.9rem; margin-top: 0.8rem; }
-
-    /* ── History badge ── */
+    /* ── History note ── */
     #history-note {
       display: none;
       background: #1e2d40;
@@ -174,6 +258,13 @@
       font-size: 0.85rem;
       margin-bottom: 1rem;
     }
+
+    /* ── Loading & error ── */
+    #loading { display: none; color: #94a3b8; font-size: 0.9rem; margin-top: 0.8rem; }
+    #error-msg { display: none; color: #fca5a5; font-size: 0.9rem; margin-top: 0.8rem; }
+
+    /* ── Empty state ── */
+    .empty-state { color: #475569; font-size: 0.875rem; font-style: italic; padding: 0.5rem 0; }
   </style>
 </head>
 <body>
@@ -213,30 +304,61 @@
 
   <!-- ── Result ── -->
   <div class="card" id="result">
-    <h2>Review Result</h2>
+    <h2>Review Report</h2>
 
     <div id="history-note"></div>
 
-    <div id="verdict-badge" class="verdict-badge"></div>
+    <!-- Executive summary -->
+    <div class="exec-summary" id="exec-summary"></div>
 
-    <div class="confidence-row">
-      Confidence: <strong id="confidence-pct"></strong>
-      <div class="confidence-bar-bg">
-        <div class="confidence-bar-fill" id="confidence-bar" style="width:0%"></div>
+    <!-- Verdict + confidence -->
+    <div class="verdict-row">
+      <div id="verdict-badge" class="verdict-badge"></div>
+      <div class="confidence-widget">
+        <span>Confidence:</span>
+        <strong id="confidence-pct"></strong>
+        <div class="confidence-bar-bg">
+          <div class="confidence-bar-fill" id="confidence-bar" style="width:0%"></div>
+        </div>
       </div>
     </div>
 
-    <div class="summary-text" id="summary-text"></div>
-
-    <div id="gaps-section" style="margin-bottom:1.2rem;">
-      <div class="section-title">Gaps &amp; Issues Found</div>
-      <ul class="finding-list" id="gaps-list"></ul>
+    <!-- Addressed items -->
+    <div id="addressed-section">
+      <div class="section-header">
+        <h3>Addressed Items</h3>
+        <span class="section-count" id="addressed-count"></span>
+      </div>
+      <div class="addressed-grid" id="addressed-list"></div>
     </div>
 
-    <div id="unrelated-section">
-      <div class="section-title">Unrelated Changes</div>
+    <!-- Findings table -->
+    <div id="findings-section">
+      <div class="section-header">
+        <h3>New Findings</h3>
+        <span class="section-count" id="findings-count"></span>
+      </div>
+      <table class="findings-table" id="findings-table">
+        <thead>
+          <tr>
+            <th style="width:3.5rem">ID</th>
+            <th style="width:13rem">File : Line</th>
+            <th>Description &amp; Recommendation</th>
+          </tr>
+        </thead>
+        <tbody id="findings-body"></tbody>
+      </table>
+    </div>
+
+    <!-- Unrelated changes -->
+    <div id="unrelated-section" style="margin-top:1.4rem;">
+      <div class="section-header">
+        <h3>Unrelated Changes</h3>
+        <span class="section-count" id="unrelated-count"></span>
+      </div>
       <div class="tag-list" id="unrelated-list"></div>
     </div>
+
   </div>
 
 </div>
@@ -259,12 +381,12 @@
   document.getElementById("review-form").addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const issueUrl      = document.getElementById("issueUrl").value.trim();
+    const issueUrl       = document.getElementById("issueUrl").value.trim();
     const reviewerSkills = skillsField.value.trim();
-    const submitBtn     = document.getElementById("submit-btn");
-    const loading       = document.getElementById("loading");
-    const errorDiv      = document.getElementById("error-msg");
-    const resultCard    = document.getElementById("result");
+    const submitBtn      = document.getElementById("submit-btn");
+    const loading        = document.getElementById("loading");
+    const errorDiv       = document.getElementById("error-msg");
+    const resultCard     = document.getElementById("result");
 
     submitBtn.disabled = true;
     loading.style.display = "block";
@@ -303,11 +425,15 @@
     // History note
     const histNote = document.getElementById("history-note");
     if (cycle > 1) {
-      histNote.textContent = `📋 This is review cycle #${cycle} for this issue. Past review history has been included in the analysis.`;
+      histNote.textContent =
+        `📋 This is review cycle #${cycle} for this issue. Past review history has been included in the analysis.`;
       histNote.style.display = "block";
     } else {
       histNote.style.display = "none";
     }
+
+    // Executive summary
+    document.getElementById("exec-summary").textContent = data.summary || "";
 
     // Verdict
     const badge = document.getElementById("verdict-badge");
@@ -315,28 +441,96 @@
     badge.className = "verdict-badge verdict-" + data.verdict;
 
     // Confidence
-    const pct = Math.round(data.confidence * 100);
+    const pct = Math.round((data.confidence || 0) * 100);
     document.getElementById("confidence-pct").textContent = pct + "%";
     document.getElementById("confidence-bar").style.width = pct + "%";
 
-    // Summary
-    document.getElementById("summary-text").textContent = data.summary;
+    // Addressed items
+    const addressedItems = data.addressed_items || [];
+    const totalItems = data.total_items || 0;
+    const addressedSection = document.getElementById("addressed-section");
+    const addressedList = document.getElementById("addressed-list");
+    addressedList.innerHTML = "";
+    document.getElementById("addressed-count").textContent =
+      addressedItems.length + (totalItems > 0 ? " / " + totalItems : "");
 
-    // Gaps
-    const gapsList = document.getElementById("gaps-list");
-    gapsList.innerHTML = "";
-    const gapsSection = document.getElementById("gaps-section");
-    if (data.gaps && data.gaps.length > 0) {
-      gapsSection.style.display = "block";
-      data.gaps.forEach(f => {
-        const li = document.createElement("li");
-        li.className = "finding-item";
-        const sev = (f.severity || "MEDIUM").toUpperCase();
-        li.innerHTML = `<span class="sev-badge sev-${sev}">${sev}</span><span>${escapeHtml(f.description)}</span>`;
-        gapsList.appendChild(li);
+    if (addressedItems.length > 0) {
+      addressedSection.style.display = "block";
+      addressedItems.forEach(item => {
+        const span = document.createElement("span");
+        span.className = "addressed-item";
+        span.textContent = item;
+        addressedList.appendChild(span);
       });
     } else {
-      gapsSection.style.display = "none";
+      addressedSection.style.display = "none";
+    }
+
+    // Findings table — grouped by severity
+    const gaps = data.gaps || [];
+    const findingsSection = document.getElementById("findings-section");
+    const findingsBody = document.getElementById("findings-body");
+    findingsBody.innerHTML = "";
+    document.getElementById("findings-count").textContent = gaps.length;
+
+    if (gaps.length > 0) {
+      findingsSection.style.display = "block";
+
+      const SEV_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
+      // Group by severity (already sorted by server, but group for section headers)
+      const grouped = {};
+      SEV_ORDER.forEach(s => grouped[s] = []);
+      gaps.forEach(f => {
+        const sev = (f.severity || "MEDIUM").toUpperCase();
+        if (!grouped[sev]) grouped[sev] = [];
+        grouped[sev].push(f);
+      });
+
+      SEV_ORDER.forEach(sev => {
+        const items = grouped[sev];
+        if (!items || items.length === 0) return;
+
+        // Severity group header row
+        const hdrRow = document.createElement("tr");
+        hdrRow.className = "sev-group-header";
+        const hdrCell = document.createElement("td");
+        hdrCell.colSpan = 3;
+        hdrCell.innerHTML = `<span class="sev-label sev-label-${sev}">${sev}</span>`;
+        hdrRow.appendChild(hdrCell);
+        findingsBody.appendChild(hdrRow);
+
+        items.forEach(f => {
+          const tr = document.createElement("tr");
+          tr.className = "sev-" + sev;
+
+          // ID cell
+          const tdId = document.createElement("td");
+          tdId.innerHTML = `<span class="finding-id">${escapeHtml(f.id || "")}</span>`;
+
+          // File:line cell
+          const tdFile = document.createElement("td");
+          if (f.file_location) {
+            tdFile.innerHTML = `<span class="file-loc">${escapeHtml(f.file_location)}</span>`;
+          } else {
+            tdFile.innerHTML = `<span class="no-location">—</span>`;
+          }
+
+          // Description + recommendation cell
+          const tdDesc = document.createElement("td");
+          let inner = `<div class="finding-desc">${escapeHtml(f.description || "")}</div>`;
+          if (f.recommendation) {
+            inner += `<div class="finding-rec">${escapeHtml(f.recommendation)}</div>`;
+          }
+          tdDesc.innerHTML = inner;
+
+          tr.appendChild(tdId);
+          tr.appendChild(tdFile);
+          tr.appendChild(tdDesc);
+          findingsBody.appendChild(tr);
+        });
+      });
+    } else {
+      findingsSection.style.display = "none";
     }
 
     // Unrelated changes
@@ -344,6 +538,8 @@
     unrelatedList.innerHTML = "";
     const unrelatedSection = document.getElementById("unrelated-section");
     const unrelated = data.unrelated_changes || [];
+    document.getElementById("unrelated-count").textContent = unrelated.length;
+
     if (unrelated.length > 0) {
       unrelatedSection.style.display = "block";
       unrelated.forEach(f => {
@@ -360,8 +556,12 @@
   }
 
   function escapeHtml(str) {
-    return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
   }
 </script>
 </body>
 </html>
+

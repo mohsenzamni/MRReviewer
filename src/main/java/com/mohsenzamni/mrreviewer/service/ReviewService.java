@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -30,7 +31,7 @@ import java.util.stream.Collectors;
  *   <li>Retrieve the local git diff.</li>
  *   <li>Filter the diff to files relevant to the issue.</li>
  *   <li>Build a structured prompt (including reviewer skills and past review history) and call the LLM.</li>
- *   <li>Parse the JSON response, persist to history, and return a {@link ReviewResponse}.</li>
+ *   <li>Parse the JSON response, auto-assign finding IDs, persist to history, and return a {@link ReviewResponse}.</li>
  * </ol>
  */
 @Service
@@ -38,13 +39,24 @@ public class ReviewService {
 
     private static final Logger log = LoggerFactory.getLogger(ReviewService.class);
 
+    // ── Severity ordering ─────────────────────────────────────────────────────
+    private static final List<String> SEVERITY_ORDER = List.of("CRITICAL", "HIGH", "MEDIUM", "LOW");
+    private static final Map<String, String> SEVERITY_ID_PREFIX;
+    static {
+        SEVERITY_ID_PREFIX = new HashMap<>();
+        SEVERITY_ID_PREFIX.put("CRITICAL", "C");
+        SEVERITY_ID_PREFIX.put("HIGH", "H");
+        SEVERITY_ID_PREFIX.put("MEDIUM", "M");
+        SEVERITY_ID_PREFIX.put("LOW", "L");
+    }
+
     // ── Prompt constants ──────────────────────────────────────────────────────
 
     /**
-     * System prompt template.  {@code %s} is replaced with the caller-supplied reviewer skills.
+     * System prompt template. {@code %s} is replaced with the caller-supplied reviewer skills.
      */
     private static final String SYSTEM_PROMPT_TEMPLATE = """
-            You are an expert software engineer performing a pre-push code review.
+            You are a senior software engineer performing a thorough pre-push code review.
             
             Your reviewer focus areas / skill set:
             %s
@@ -54,33 +66,51 @@ public class ReviewService {
             - Optionally, a history of previous review cycles for this issue.
             - A git diff of the current local changes.
             
-            Your tasks:
-            1. Summarize the issue in one or two sentences.
-            2. Extract the expected behavior / acceptance criteria from the issue.
-            3. Analyze the code changes in the diff.
-            4. Map each change to the expected behavior.
-            5. Identify missing implementations that the issue requires but the diff does not provide.
-               For each gap, assign a severity: CRITICAL, HIGH, MEDIUM, or LOW.
-               - CRITICAL: blocks correctness or introduces a security vulnerability.
-               - HIGH: significant functional gap or likely bug.
-               - MEDIUM: partial implementation or questionable quality.
-               - LOW: minor improvement opportunity or style issue.
-            6. Identify unrelated changes that are present in the diff but do not relate to the issue.
-            7. Consider the previous review cycles (if any) to track whether past findings have been addressed.
-            8. Produce a final verdict: FULLY_RESOLVED, PARTIALLY_RESOLVED, or NOT_RESOLVED.
-            9. Provide a confidence score between 0.0 and 1.0.
+            ## Output format
             
-            You MUST respond with ONLY a single valid JSON object — no markdown, no prose outside the JSON.
-            The JSON must conform exactly to this schema:
+            Produce ONLY a single valid JSON object — no markdown, no prose outside the JSON.
+            
+            ### Executive summary rules
+            The "summary" field must follow this exact professional format:
+            "This MR delivers fixes for issue [issue title] — [X]/[Y] items are addressed: [comma-separated list of addressed items in brief]. [history sentence]."
+            - X = number of acceptance criteria addressed by this diff
+            - Y = total number of acceptance criteria identified in the issue
+            - history sentence = "No previous automated reviews exist on this MR — this is the first review." OR "Previous review cycle [N] raised [K] findings; [how many] have been addressed in this cycle."
+            
+            ### Acceptance criteria rules
+            - Read the issue description carefully and extract every distinct acceptance criterion or required behaviour as a separate item.
+            - For each item decide: is it addressed (fully or partially) by the diff?
+            - List addressed items in "addressed_items".
+            - Total count goes in "total_items".
+            
+            ### Finding rules
+            Each entry in "gaps" represents a problem found in the diff:
+            - "severity": one of CRITICAL, HIGH, MEDIUM, LOW
+              * CRITICAL: correctness bug, data corruption, or security vulnerability
+              * HIGH: significant functional gap or likely bug that will surface at runtime
+              * MEDIUM: partial/questionable implementation, missing test, design issue
+              * LOW: minor improvement, style, naming, or non-blocking nit
+            - "file_location": "FileName.java:startLine-endLine" or "FileName.java:line" — the exact location in the diff. Use null if not pinpointable.
+            - "description": detailed explanation. Include the method name, the problematic lines, and WHY it is a problem (e.g. Hibernate dirty-tracking, race condition, NPE path).
+            - "recommendation": concrete, actionable advice on how to fix it.
+            
+            ### JSON schema (strict)
             {
-              "summary": "<string>",
+              "summary": "<executive summary string>",
+              "addressed_items": ["<string>", ...],
+              "total_items": <integer>,
               "gaps": [
-                { "description": "<string>", "severity": "CRITICAL|HIGH|MEDIUM|LOW" },
+                {
+                  "severity": "CRITICAL|HIGH|MEDIUM|LOW",
+                  "file_location": "<FileName.java:line> or null",
+                  "description": "<detailed description>",
+                  "recommendation": "<actionable fix>"
+                },
                 ...
               ],
               "unrelated_changes": ["<string>", ...],
               "verdict": "FULLY_RESOLVED | PARTIALLY_RESOLVED | NOT_RESOLVED",
-              "confidence": <number 0-1>
+              "confidence": <number 0.0-1.0>
             }
             """;
 
@@ -146,7 +176,11 @@ public class ReviewService {
             log.warn("No local changes detected — returning NOT_RESOLVED");
             return new ReviewResponse(
                     "No local changes were found between HEAD and the base branch.",
-                    List.of(new Finding("No code changes detected in local branch.", "HIGH")),
+                    List.of(),
+                    0,
+                    List.of(new Finding("C1", "CRITICAL", null,
+                            "No code changes detected in local branch.",
+                            "Ensure you are running the reviewer from the correct git working directory.")),
                     List.of(),
                     "NOT_RESOLVED",
                     1.0
@@ -159,7 +193,11 @@ public class ReviewService {
             log.warn("No relevant files found after filtering — returning NOT_RESOLVED");
             return new ReviewResponse(
                     "Local changes exist but none appear related to issue: " + issue.title(),
-                    List.of(new Finding("None of the changed files match issue keywords.", "HIGH")),
+                    List.of(),
+                    0,
+                    List.of(new Finding("H1", "HIGH", null,
+                            "None of the changed files match issue keywords.",
+                            "Verify that the correct branch is checked out and that the changes target the files described in the issue.")),
                     diff.changedFiles(),
                     "NOT_RESOLVED",
                     0.9
@@ -171,7 +209,7 @@ public class ReviewService {
         String userPrompt = buildUserPrompt(issue, filteredDiff, request.issueUrl());
         String llmResponse = liteLLMClient.chat(systemPrompt, userPrompt);
 
-        // 5. Parse LLM JSON response
+        // 5. Parse LLM JSON response and auto-assign finding IDs
         ReviewResponse response = parseResponse(llmResponse);
 
         // 6. Persist review to history for future cycles
@@ -243,8 +281,7 @@ public class ReviewService {
 
         for (String line : lines) {
             if (line.startsWith("diff --git ")) {
-                inRelevant = relevantFiles.stream()
-                        .anyMatch(f -> line.contains(f));
+                inRelevant = relevantFiles.stream().anyMatch(f -> line.contains(f));
             }
             if (inRelevant) {
                 result.append(line).append("\n");
@@ -279,52 +316,82 @@ public class ReviewService {
     @SuppressWarnings("unchecked")
     private ReviewResponse parseResponse(String content) {
         try {
-            Map<String, Object> map = objectMapper.readValue(content,
-                    new TypeReference<>() {});
+            Map<String, Object> map = objectMapper.readValue(content, new TypeReference<>() {});
 
-            String summary = getString(map, "summary", "N/A");
-            List<Finding> gaps = findingList(map, "gaps");
+            String summary         = getString(map, "summary", "N/A");
+            List<String> addressed = getStringList(map, "addressed_items");
+            int totalItems         = getInt(map, "total_items", addressed.size());
+            List<Finding> gaps     = findingList(map, "gaps");
             List<String> unrelated = getStringList(map, "unrelated_changes");
-            String verdict = getString(map, "verdict", "NOT_RESOLVED");
-            double confidence = getDouble(map, "confidence", 0.0);
+            String verdict         = getString(map, "verdict", "NOT_RESOLVED");
+            double confidence      = getDouble(map, "confidence", 0.0);
 
-            // Normalise verdict to known values
+            // Normalise verdict
             if (!List.of("FULLY_RESOLVED", "PARTIALLY_RESOLVED", "NOT_RESOLVED").contains(verdict)) {
                 log.warn("Unknown verdict '{}' from LLM — defaulting to NOT_RESOLVED", verdict);
                 verdict = "NOT_RESOLVED";
             }
             confidence = Math.min(1.0, Math.max(0.0, confidence));
 
-            return new ReviewResponse(summary, gaps, unrelated, verdict, confidence);
+            return new ReviewResponse(summary, addressed, totalItems, gaps, unrelated, verdict, confidence);
 
         } catch (Exception ex) {
             throw new LLMException("Failed to parse LLM JSON response: " + ex.getMessage(), ex);
         }
     }
 
-    private String getString(Map<String, Object> map, String key, String defaultVal) {
-        Object val = map.get(key);
-        return val instanceof String s ? s : defaultVal;
-    }
-
+    /**
+     * Parses the "gaps" array from the LLM response and auto-assigns short IDs
+     * (C1, C2 … H1, H2 … M1 … L1 …) sorted by severity order.
+     */
     @SuppressWarnings("unchecked")
     private List<Finding> findingList(Map<String, Object> map, String key) {
         Object val = map.get(key);
-        if (val instanceof List<?> list) {
-            return list.stream()
-                    .filter(o -> o instanceof Map)
-                    .map(o -> {
-                        Map<String, Object> entry = (Map<String, Object>) o;
-                        String desc = entry.get("description") instanceof String s ? s : String.valueOf(entry.get("description"));
-                        String sev = entry.get("severity") instanceof String sv ? sv.toUpperCase(Locale.ROOT) : "MEDIUM";
-                        if (!List.of("CRITICAL", "HIGH", "MEDIUM", "LOW").contains(sev)) {
-                            sev = "MEDIUM";
-                        }
-                        return new Finding(desc, sev);
-                    })
-                    .collect(Collectors.toList());
+        if (!(val instanceof List<?> list)) {
+            return Collections.emptyList();
         }
-        return Collections.emptyList();
+
+        // Parse raw entries
+        List<Finding> raw = list.stream()
+                .filter(o -> o instanceof Map)
+                .map(o -> {
+                    Map<String, Object> entry = (Map<String, Object>) o;
+                    String sev = normaliseSeverity(
+                            entry.get("severity") instanceof String sv ? sv : "MEDIUM");
+                    String fileLoc = entry.get("file_location") instanceof String fl ? fl : null;
+                    String desc = entry.get("description") instanceof String d ? d
+                            : String.valueOf(entry.getOrDefault("description", ""));
+                    String rec = entry.get("recommendation") instanceof String r ? r : "";
+                    // id will be assigned below
+                    return new Finding(null, sev, fileLoc, desc, rec);
+                })
+                .sorted((a, b) -> {
+                    int ia = SEVERITY_ORDER.indexOf(a.severity());
+                    int ib = SEVERITY_ORDER.indexOf(b.severity());
+                    return Integer.compare(ia < 0 ? 99 : ia, ib < 0 ? 99 : ib);
+                })
+                .collect(Collectors.toList());
+
+        // Assign IDs per-severity counter
+        Map<String, Integer> counters = new HashMap<>();
+        return raw.stream()
+                .map(f -> {
+                    String prefix = SEVERITY_ID_PREFIX.getOrDefault(f.severity(), "F");
+                    int n = counters.merge(f.severity(), 1, Integer::sum);
+                    return new Finding(prefix + n, f.severity(), f.fileLocation(),
+                            f.description(), f.recommendation());
+                })
+                .collect(Collectors.toList());
+    }
+
+    private String normaliseSeverity(String raw) {
+        String upper = raw.toUpperCase(Locale.ROOT);
+        return SEVERITY_ORDER.contains(upper) ? upper : "MEDIUM";
+    }
+
+    private String getString(Map<String, Object> map, String key, String defaultVal) {
+        Object val = map.get(key);
+        return val instanceof String s ? s : defaultVal;
     }
 
     @SuppressWarnings("unchecked")
@@ -341,10 +408,12 @@ public class ReviewService {
 
     private double getDouble(Map<String, Object> map, String key, double defaultVal) {
         Object val = map.get(key);
-        if (val instanceof Number n) {
-            return n.doubleValue();
-        }
-        return defaultVal;
+        return val instanceof Number n ? n.doubleValue() : defaultVal;
+    }
+
+    private int getInt(Map<String, Object> map, String key, int defaultVal) {
+        Object val = map.get(key);
+        return val instanceof Number n ? n.intValue() : defaultVal;
     }
 }
 

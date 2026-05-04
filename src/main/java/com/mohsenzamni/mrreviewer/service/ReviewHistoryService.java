@@ -68,10 +68,19 @@ public class ReviewHistoryService {
             sb.append("### Cycle ").append(i + 1).append(" — verdict: ").append(r.verdict())
               .append(" (confidence: ").append(String.format("%.2f", r.confidence())).append(")\n");
             sb.append("**Summary:** ").append(r.summary()).append("\n");
+            if (r.addressedItems() != null && !r.addressedItems().isEmpty()) {
+                sb.append("**Addressed items (").append(r.addressedItems().size())
+                  .append("/").append(r.totalItems()).append("):**\n");
+                r.addressedItems().forEach(item ->
+                    sb.append("- ✓ ").append(item).append("\n")
+                );
+            }
             if (!r.gaps().isEmpty()) {
-                sb.append("**Gaps/Issues found:**\n");
+                sb.append("**Findings (").append(r.gaps().size()).append("):**\n");
                 r.gaps().forEach(f ->
-                    sb.append("- [").append(f.severity()).append("] ").append(f.description()).append("\n")
+                    sb.append("- [").append(f.id()).append("] [").append(f.severity()).append("] ")
+                      .append(f.fileLocation() != null ? f.fileLocation() + " — " : "")
+                      .append(f.description()).append("\n")
                 );
             }
             sb.append("\n");

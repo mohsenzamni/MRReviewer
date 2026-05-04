@@ -25,14 +25,9 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class ReviewServiceTest {
 
-    @Mock
-    private GitLabClient gitLabClient;
-
-    @Mock
-    private GitService gitService;
-
-    @Mock
-    private LiteLLMClient liteLLMClient;
+    @Mock private GitLabClient gitLabClient;
+    @Mock private GitService gitService;
+    @Mock private LiteLLMClient liteLLMClient;
 
     private ReviewService reviewService;
     private ReviewHistoryService historyService;
@@ -83,10 +78,10 @@ class ReviewServiceTest {
         verifyNoInteractions(liteLLMClient);
     }
 
-    // ── Successful LLM review — severity in gaps ──────────────────────────────
+    // ── Successful LLM review — full report format ────────────────────────────
 
     @Test
-    void review_returnsLlmResponse_withSeverityFindings() {
+    void review_returnsLlmResponse_withFullReportFields() {
         when(gitLabClient.fetchIssue(any()))
                 .thenReturn(new GitLabIssue(3L, "Add login feature",
                         "Implement login endpoint."));
@@ -97,10 +92,22 @@ class ReviewServiceTest {
                         false));
         String llmJson = """
                 {
-                  "summary": "Adds login endpoint",
+                  "summary": "This MR delivers fixes for Add login feature — 1/2 items are addressed: login endpoint created. No previous automated reviews.",
+                  "addressed_items": ["Login endpoint created at POST /login"],
+                  "total_items": 2,
                   "gaps": [
-                    { "description": "Missing rate-limiting on login endpoint", "severity": "HIGH" },
-                    { "description": "No unit tests for the new endpoint", "severity": "MEDIUM" }
+                    {
+                      "severity": "HIGH",
+                      "file_location": "LoginController.java:45",
+                      "description": "Missing rate-limiting on login endpoint",
+                      "recommendation": "Apply @RateLimiter annotation or add a bucket4j filter."
+                    },
+                    {
+                      "severity": "MEDIUM",
+                      "file_location": null,
+                      "description": "No unit tests for the new endpoint",
+                      "recommendation": "Add MockMvc tests covering success and failure paths."
+                    }
                   ],
                   "unrelated_changes": [],
                   "verdict": "PARTIALLY_RESOLVED",
@@ -113,26 +120,62 @@ class ReviewServiceTest {
 
         assertThat(response.verdict()).isEqualTo("PARTIALLY_RESOLVED");
         assertThat(response.confidence()).isEqualTo(0.80);
-        assertThat(response.summary()).isEqualTo("Adds login endpoint");
+        assertThat(response.addressedItems()).containsExactly("Login endpoint created at POST /login");
+        assertThat(response.totalItems()).isEqualTo(2);
         assertThat(response.gaps()).hasSize(2);
-        assertThat(response.gaps()).extracting(Finding::severity)
-                .containsExactly("HIGH", "MEDIUM");
-        assertThat(response.gaps()).extracting(Finding::description)
-                .contains("Missing rate-limiting on login endpoint");
+        // IDs are auto-assigned: H1, M1
+        assertThat(response.gaps()).extracting(Finding::id).containsExactly("H1", "M1");
+        assertThat(response.gaps()).extracting(Finding::severity).containsExactly("HIGH", "MEDIUM");
+        assertThat(response.gaps().get(0).fileLocation()).isEqualTo("LoginController.java:45");
+        assertThat(response.gaps().get(0).recommendation()).contains("RateLimiter");
+    }
+
+    // ── Finding IDs are auto-assigned per-severity ────────────────────────────
+
+    @Test
+    void review_autoAssignsFindingIds_sortedBySeverity() {
+        when(gitLabClient.fetchIssue(any()))
+                .thenReturn(new GitLabIssue(13L, "Auth refactor", "Refactor auth module."));
+        when(gitService.getDiff())
+                .thenReturn(new GitDiff(List.of("AuthService.java"),
+                        "diff --git a/AuthService.java ...", false));
+        // LLM returns findings in mixed order
+        when(liteLLMClient.chat(anyString(), anyString())).thenReturn("""
+                {
+                  "summary": "S",
+                  "addressed_items": [],
+                  "total_items": 0,
+                  "gaps": [
+                    { "severity": "LOW",      "description": "L issue",  "recommendation": "fix L" },
+                    { "severity": "CRITICAL",  "description": "C issue",  "recommendation": "fix C" },
+                    { "severity": "HIGH",      "description": "H1 issue", "recommendation": "fix H1"},
+                    { "severity": "HIGH",      "description": "H2 issue", "recommendation": "fix H2"},
+                    { "severity": "MEDIUM",    "description": "M issue",  "recommendation": "fix M" }
+                  ],
+                  "unrelated_changes": [],
+                  "verdict": "NOT_RESOLVED",
+                  "confidence": 0.5
+                }
+                """);
+
+        ReviewResponse response = reviewService.review(req("https://gitlab.com/org/proj/-/issues/13"));
+
+        assertThat(response.gaps()).extracting(Finding::id)
+                .containsExactly("C1", "H1", "H2", "M1", "L1");
     }
 
     // ── Reviewer skills — default used when none supplied ────────────────────
 
     @Test
     void reviewRequest_usesDefaultSkills_whenNoneProvided() {
-        ReviewRequest req = new ReviewRequest("https://gitlab.com/org/proj/-/issues/1", null);
-        assertThat(req.effectiveSkills()).isEqualTo(ReviewRequest.DEFAULT_SKILLS);
+        ReviewRequest r = new ReviewRequest("https://gitlab.com/org/proj/-/issues/1", null);
+        assertThat(r.effectiveSkills()).isEqualTo(ReviewRequest.DEFAULT_SKILLS);
     }
 
     @Test
     void reviewRequest_usesCustomSkills_whenProvided() {
-        ReviewRequest req = new ReviewRequest("https://gitlab.com/org/proj/-/issues/1", "Security only");
-        assertThat(req.effectiveSkills()).isEqualTo("Security only");
+        ReviewRequest r = new ReviewRequest("https://gitlab.com/org/proj/-/issues/1", "Security only");
+        assertThat(r.effectiveSkills()).isEqualTo("Security only");
     }
 
     // ── Review history — stored and formatted ─────────────────────────────────
@@ -148,6 +191,8 @@ class ReviewServiceTest {
         when(liteLLMClient.chat(anyString(), anyString())).thenReturn("""
                 {
                   "summary": "First review",
+                  "addressed_items": [],
+                  "total_items": 0,
                   "gaps": [],
                   "unrelated_changes": [],
                   "verdict": "PARTIALLY_RESOLVED",
@@ -159,25 +204,6 @@ class ReviewServiceTest {
 
         assertThat(historyService.get(issueUrl)).hasSize(1);
         assertThat(historyService.get(issueUrl).get(0).verdict()).isEqualTo("PARTIALLY_RESOLVED");
-    }
-
-    @Test
-    void history_formatHistory_includesVerdictAndFindings() {
-        String issueUrl = "https://gitlab.com/org/proj/-/issues/11";
-        ReviewResponse past = new ReviewResponse(
-                "Added login endpoint",
-                List.of(new Finding("Missing tests", "MEDIUM")),
-                List.of(),
-                "PARTIALLY_RESOLVED",
-                0.7
-        );
-        historyService.add(issueUrl, past);
-
-        String formatted = historyService.formatHistory(issueUrl);
-
-        assertThat(formatted).contains("PARTIALLY_RESOLVED");
-        assertThat(formatted).contains("Missing tests");
-        assertThat(formatted).contains("MEDIUM");
     }
 
     @Test
@@ -198,7 +224,9 @@ class ReviewServiceTest {
         when(liteLLMClient.chat(anyString(), anyString())).thenReturn("""
                 {
                   "summary": "S",
-                  "gaps": [ { "description": "issue", "severity": "SUPER_CRITICAL" } ],
+                  "addressed_items": [],
+                  "total_items": 0,
+                  "gaps": [ { "description": "issue", "severity": "SUPER_CRITICAL", "recommendation": "r" } ],
                   "unrelated_changes": [],
                   "verdict": "NOT_RESOLVED",
                   "confidence": 0.5
@@ -209,6 +237,7 @@ class ReviewServiceTest {
 
         assertThat(response.gaps()).hasSize(1);
         assertThat(response.gaps().get(0).severity()).isEqualTo("MEDIUM");
+        assertThat(response.gaps().get(0).id()).isEqualTo("M1");
     }
 
     // ── Keyword extraction ────────────────────────────────────────────────────
@@ -243,7 +272,6 @@ class ReviewServiceTest {
 
     @Test
     void filterDiff_returnsAll_whenNoKeywords() {
-        // Issue with only stop-words / very short tokens
         GitLabIssue issue = new GitLabIssue(6L, "A", "");
         GitDiff full = new GitDiff(List.of("foo.java", "bar.java"), "patch", false);
 
@@ -259,14 +287,13 @@ class ReviewServiceTest {
         when(gitLabClient.fetchIssue(any()))
                 .thenReturn(new GitLabIssue(7L, "Auth refactor", "Refactor auth module."));
         when(gitService.getDiff())
-                .thenReturn(new GitDiff(
-                        List.of("AuthService.java"),
-                        "diff --git a/AuthService.java ...",
-                        false));
-        when(liteLLMClient.chat(anyString(), anyString())).thenReturn(
-                """
+                .thenReturn(new GitDiff(List.of("AuthService.java"),
+                        "diff --git a/AuthService.java ...", false));
+        when(liteLLMClient.chat(anyString(), anyString())).thenReturn("""
                 {
                   "summary": "Refactors auth",
+                  "addressed_items": [],
+                  "total_items": 0,
                   "gaps": [],
                   "unrelated_changes": [],
                   "verdict": "UNKNOWN_VERDICT",
@@ -286,14 +313,13 @@ class ReviewServiceTest {
         when(gitLabClient.fetchIssue(any()))
                 .thenReturn(new GitLabIssue(8L, "Auth refactor", "Refactor auth module."));
         when(gitService.getDiff())
-                .thenReturn(new GitDiff(
-                        List.of("AuthService.java"),
-                        "diff --git a/AuthService.java ...",
-                        false));
-        when(liteLLMClient.chat(anyString(), anyString())).thenReturn(
-                """
+                .thenReturn(new GitDiff(List.of("AuthService.java"),
+                        "diff --git a/AuthService.java ...", false));
+        when(liteLLMClient.chat(anyString(), anyString())).thenReturn("""
                 {
                   "summary": "Refactors auth",
+                  "addressed_items": [],
+                  "total_items": 0,
                   "gaps": [],
                   "unrelated_changes": [],
                   "verdict": "FULLY_RESOLVED",
@@ -313,10 +339,8 @@ class ReviewServiceTest {
         when(gitLabClient.fetchIssue(any()))
                 .thenReturn(new GitLabIssue(9L, "Auth refactor", "Refactor auth module."));
         when(gitService.getDiff())
-                .thenReturn(new GitDiff(
-                        List.of("AuthService.java"),
-                        "diff --git a/AuthService.java ...",
-                        false));
+                .thenReturn(new GitDiff(List.of("AuthService.java"),
+                        "diff --git a/AuthService.java ...", false));
         when(liteLLMClient.chat(anyString(), anyString())).thenReturn("not json at all");
 
         assertThatThrownBy(

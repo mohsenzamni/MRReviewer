@@ -62,11 +62,15 @@ class ReviewHistoryServiceTest {
     }
 
     @Test
-    void formatHistory_includesFindings() {
+    void formatHistory_includesFindingIdLocationAndDescription() {
         String url = "https://gitlab.com/org/proj/-/issues/5";
         ReviewResponse r = new ReviewResponse(
                 "summary",
-                List.of(new Finding("Missing auth check", "CRITICAL")),
+                List.of("Addressed item A"),
+                3,
+                List.of(new Finding("C1", "CRITICAL", "CardHandler.java:677-687",
+                        "Partial mutations silently persisted",
+                        "Mark transaction for rollback on early return.")),
                 List.of(),
                 "NOT_RESOLVED",
                 0.5
@@ -75,13 +79,36 @@ class ReviewHistoryServiceTest {
 
         String text = service.formatHistory(url);
 
-        assertThat(text).contains("Missing auth check");
+        assertThat(text).contains("C1");
         assertThat(text).contains("CRITICAL");
+        assertThat(text).contains("CardHandler.java:677-687");
+        assertThat(text).contains("Partial mutations silently persisted");
+    }
+
+    @Test
+    void formatHistory_includesAddressedItems() {
+        String url = "https://gitlab.com/org/proj/-/issues/6";
+        ReviewResponse r = new ReviewResponse(
+                "summary",
+                List.of("SMS issuer-capability validation", "Atomic delete of multiple devices"),
+                5,
+                List.of(),
+                List.of(),
+                "PARTIALLY_RESOLVED",
+                0.7
+        );
+        service.add(url, r);
+
+        String text = service.formatHistory(url);
+
+        assertThat(text).contains("Addressed items");
+        assertThat(text).contains("SMS issuer-capability validation");
+        assertThat(text).contains("2/5");
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private static ReviewResponse response(String verdict, double confidence) {
-        return new ReviewResponse("summary", List.of(), List.of(), verdict, confidence);
+        return new ReviewResponse("summary", List.of(), 0, List.of(), List.of(), verdict, confidence);
     }
 }
