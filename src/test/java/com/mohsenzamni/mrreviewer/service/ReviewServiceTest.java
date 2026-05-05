@@ -332,6 +332,37 @@ class ReviewServiceTest {
         assertThat(response.confidence()).isEqualTo(1.0);
     }
 
+    // ── Markdown code-fence stripping ─────────────────────────────────────────
+
+    @Test
+    void review_parsesResponse_whenLlmWrapsJsonInMarkdownFence() {
+        when(gitLabClient.fetchIssue(any()))
+                .thenReturn(new GitLabIssue(20L, "Fix oob issue", "Missing oobTransId."));
+        when(gitService.getDiff())
+                .thenReturn(new GitDiff(List.of("OobService.java"),
+                        "diff --git a/OobService.java ...", false));
+        // LLM wraps its JSON in a markdown code fence despite instructions
+        when(liteLLMClient.chat(anyString(), anyString())).thenReturn("""
+                
+                ```json
+                {
+                  "summary": "Wrapped response",
+                  "addressed_items": ["Store oobTransId"],
+                  "total_items": 1,
+                  "gaps": [],
+                  "unrelated_changes": [],
+                  "verdict": "FULLY_RESOLVED",
+                  "confidence": 0.95
+                }
+                ```""");
+
+        ReviewResponse response = reviewService.review(req("https://gitlab.com/org/proj/-/issues/20"));
+
+        assertThat(response.verdict()).isEqualTo("FULLY_RESOLVED");
+        assertThat(response.confidence()).isEqualTo(0.95);
+        assertThat(response.addressedItems()).containsExactly("Store oobTransId");
+    }
+
     // ── Invalid LLM JSON ──────────────────────────────────────────────────────
 
     @Test

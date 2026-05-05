@@ -313,10 +313,33 @@ public class ReviewService {
 
     // ── LLM response parsing ──────────────────────────────────────────────────
 
+    /**
+     * Strips a markdown code fence wrapper (e.g. {@code ```json ... ```}) from the LLM output,
+     * returning the bare JSON string. If no fence is present the input is returned unchanged.
+     */
+    private static String stripMarkdownCodeFence(String content) {
+        if (content == null) {
+            return content;
+        }
+        String trimmed = content.strip();
+        if (trimmed.startsWith("```")) {
+            int firstNewline = trimmed.indexOf('\n');
+            if (firstNewline < 0) {
+                return trimmed;
+            }
+            String afterFenceOpen = trimmed.substring(firstNewline + 1);
+            if (afterFenceOpen.endsWith("```")) {
+                return afterFenceOpen.substring(0, afterFenceOpen.length() - 3).strip();
+            }
+        }
+        return content;
+    }
+
     @SuppressWarnings("unchecked")
     private ReviewResponse parseResponse(String content) {
         try {
-            Map<String, Object> map = objectMapper.readValue(content, new TypeReference<>() {});
+            Map<String, Object> map = objectMapper.readValue(
+                    stripMarkdownCodeFence(content), new TypeReference<>() {});
 
             String summary         = getString(map, "summary", "N/A");
             List<String> addressed = getStringList(map, "addressed_items");
