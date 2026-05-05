@@ -22,15 +22,16 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
-
 /**
  * Orchestrates the full pre-push review pipeline:
  *
  * <ol>
  *   <li>Parse the GitLab issue URL and fetch issue metadata.</li>
  *   <li>Retrieve the local git diff.</li>
+ *   <li>Run local static-analysis tools (if configured) and collect their output.</li>
  *   <li>Filter the diff to files relevant to the issue.</li>
- *   <li>Build a structured prompt (including reviewer skills and past review history) and call the LLM.</li>
+ *   <li>Build a structured prompt (including reviewer skills, static-analysis results,
+ *       and past review history) and call the LLM.</li>
  *   <li>Parse the JSON response, auto-assign finding IDs, persist to history, and return a {@link ReviewResponse}.</li>
  * </ol>
  */
@@ -123,6 +124,7 @@ public class ReviewService {
             **Description:**
             %s
             
+            %s\
             ## Local Git Diff (branch vs %s)
             
             Changed files (%d):
@@ -145,18 +147,23 @@ public class ReviewService {
     private final GitService gitService;
     private final LiteLLMClient liteLLMClient;
     private final ReviewHistoryService historyService;
+    private final LocalToolsService localToolsService;
+    private final ProjectConfigService projectConfigService;
     private final ObjectMapper objectMapper;
     private final AppConfig config;
 
     public ReviewService(GitLabClient gitLabClient, GitService gitService,
                          LiteLLMClient liteLLMClient, ReviewHistoryService historyService,
+                         LocalToolsService localToolsService, ProjectConfigService projectConfigService,
                          ObjectMapper objectMapper, AppConfig config) {
-        this.gitLabClient   = gitLabClient;
-        this.gitService     = gitService;
-        this.liteLLMClient  = liteLLMClient;
-        this.historyService = historyService;
-        this.objectMapper   = objectMapper;
-        this.config         = config;
+        this.gitLabClient          = gitLabClient;
+        this.gitService            = gitService;
+        this.liteLLMClient         = liteLLMClient;
+        this.historyService        = historyService;
+        this.localToolsService     = localToolsService;
+        this.projectConfigService  = projectConfigService;
+        this.objectMapper          = objectMapper;
+        this.config                = config;
     }
 
     /**
@@ -187,7 +194,10 @@ public class ReviewService {
             );
         }
 
-        // 3. Filter diff to relevant files
+        // 3. Run local static-analysis tools (non-fatal — failures are logged and skipped)
+        List<LocalToolsService.ToolResult> toolResults = localToolsService.runAll();
+
+        // 4. Filter diff to relevant files
         GitDiff filteredDiff = filterDiff(diff, issue);
         if (filteredDiff.changedFiles().isEmpty()) {
             log.warn("No relevant files found after filtering — returning NOT_RESOLVED");
@@ -204,15 +214,15 @@ public class ReviewService {
             );
         }
 
-        // 4. Build prompt and call LLM
-        String systemPrompt = SYSTEM_PROMPT_TEMPLATE.formatted(request.effectiveSkills());
-        String userPrompt = buildUserPrompt(issue, filteredDiff, request.issueUrl());
+        // 5. Build prompt and call LLM
+        String systemPrompt = SYSTEM_PROMPT_TEMPLATE.formatted(resolveSkills(request));
+        String userPrompt = buildUserPrompt(issue, filteredDiff, request.issueUrl(), toolResults);
         String llmResponse = liteLLMClient.chat(systemPrompt, userPrompt);
 
-        // 5. Parse LLM JSON response and auto-assign finding IDs
+        // 6. Parse LLM JSON response and auto-assign finding IDs
         ReviewResponse response = parseResponse(llmResponse);
 
-        // 6. Persist review to history for future cycles
+        // 7. Persist review to history for future cycles
         historyService.add(request.issueUrl(), response);
 
         return response;
@@ -292,23 +302,65 @@ public class ReviewService {
 
     // ── Prompt building ───────────────────────────────────────────────────────
 
-    private String buildUserPrompt(GitLabIssue issue, GitDiff diff, String issueUrl) {
+    private String buildUserPrompt(GitLabIssue issue, GitDiff diff, String issueUrl,
+                                   List<LocalToolsService.ToolResult> toolResults) {
         String fileList = diff.changedFiles().stream()
                 .map(f -> "- " + f)
                 .collect(Collectors.joining("\n"));
 
         String baseBranch = config.getGit().getBaseBranch();
         String historyBlock = historyService.formatHistory(issueUrl);
+        String staticAnalysisBlock = formatStaticAnalysis(toolResults);
 
         return USER_PROMPT_TEMPLATE.formatted(
                 historyBlock,
                 issue.title(),
                 issue.description(),
+                staticAnalysisBlock,
                 baseBranch,
                 diff.changedFiles().size(),
                 fileList,
                 diff.patch()
         );
+    }
+
+    /**
+     * Formats the static-analysis tool results as a markdown section to include in the
+     * user prompt. Returns an empty string when there are no results so the prompt is
+     * unchanged when no tools are configured or enabled.
+     */
+    private static String formatStaticAnalysis(List<LocalToolsService.ToolResult> results) {
+        if (results == null || results.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("## Static Analysis Results\n\n");
+        for (LocalToolsService.ToolResult result : results) {
+            sb.append("### ").append(result.name()).append("\n```\n")
+              .append(result.output()).append("\n```\n\n");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Resolves the reviewer skills to use for this request, applying the following priority:
+     * <ol>
+     *   <li>Explicit {@code reviewerSkills} in the API request (highest priority).</li>
+     *   <li>Project-level skills from {@code .mrreviewer.yml} in the git working directory.</li>
+     *   <li>The built-in {@link ReviewRequest#DEFAULT_SKILLS} fallback.</li>
+     * </ol>
+     */
+    private String resolveSkills(ReviewRequest request) {
+        // 1. Request-level skills take absolute priority
+        if (request.reviewerSkills() != null && !request.reviewerSkills().isBlank()) {
+            return request.reviewerSkills();
+        }
+        // 2. Project-level skills from .mrreviewer.yml
+        String projectSkills = projectConfigService.loadSkills();
+        if (projectSkills != null) {
+            return projectSkills;
+        }
+        // 3. Built-in defaults
+        return ReviewRequest.DEFAULT_SKILLS;
     }
 
     // ── LLM response parsing ──────────────────────────────────────────────────

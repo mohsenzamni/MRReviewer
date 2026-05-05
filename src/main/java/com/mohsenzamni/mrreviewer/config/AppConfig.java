@@ -5,6 +5,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Central application configuration loaded from {@code application.yml}.
  */
@@ -15,6 +18,7 @@ public class AppConfig {
     private GitLab gitlab = new GitLab();
     private LiteLLM litellm = new LiteLLM();
     private Git git = new Git();
+    private LocalTools localTools = new LocalTools();
 
     // ── Getters / setters (Spring needs setters for @ConfigurationProperties) ──
 
@@ -26,6 +30,9 @@ public class AppConfig {
 
     public Git getGit() { return git; }
     public void setGit(Git git) { this.git = git; }
+
+    public LocalTools getLocalTools() { return localTools; }
+    public void setLocalTools(LocalTools localTools) { this.localTools = localTools; }
 
     // ── Nested config groups ───────────────────────────────────────────────────
 
@@ -80,6 +87,67 @@ public class AppConfig {
 
         public int getContextLines() { return contextLines; }
         public void setContextLines(int contextLines) { this.contextLines = contextLines; }
+    }
+
+    // ── Shared beans ──────────────────────────────────────────────────────────
+
+    /**
+     * Configuration for local static-analysis tools that run in the git working directory.
+     * Each tool is a subprocess whose combined stdout/stderr is injected into the LLM prompt.
+     */
+    public static class LocalTools {
+
+        /**
+         * Master switch — when {@code false} no tools are executed regardless of per-tool settings.
+         * Defaults to {@code false} so the feature is opt-in.
+         */
+        private boolean enabled = false;
+
+        /** Seconds each tool subprocess is allowed to run before it is killed. */
+        private int timeoutSeconds = 120;
+
+        /** Maximum number of output lines captured per tool before truncation. */
+        private int maxOutputLines = 200;
+
+        /** Ordered list of tools to run. */
+        private List<Tool> tools = new ArrayList<>();
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+
+        public int getTimeoutSeconds() { return timeoutSeconds; }
+        public void setTimeoutSeconds(int timeoutSeconds) { this.timeoutSeconds = timeoutSeconds; }
+
+        public int getMaxOutputLines() { return maxOutputLines; }
+        public void setMaxOutputLines(int maxOutputLines) { this.maxOutputLines = maxOutputLines; }
+
+        public List<Tool> getTools() { return tools; }
+        public void setTools(List<Tool> tools) { this.tools = tools; }
+
+        /** A single configured tool (name + command argv). */
+        public static class Tool {
+
+            /** Human-readable label shown in the prompt section header. */
+            private String name = "";
+
+            /** Whether this particular tool is active. Defaults to {@code true}. */
+            private boolean enabled = true;
+
+            /**
+             * Command to run as a discrete argument list — never shell-expanded.
+             * Example: {@code ["mvn", "-q", "checkstyle:check"]}.
+             */
+            private List<String> command = new ArrayList<>();
+
+            public String getName() { return name; }
+            public void setName(String name) { this.name = name; }
+
+            public boolean isEnabled() { return enabled; }
+            public void setEnabled(boolean enabled) { this.enabled = enabled; }
+
+            public List<String> getCommand() { return command; }
+            public void setCommand(List<String> command) { this.command = command; }
+        }
     }
 
     // ── Shared beans ──────────────────────────────────────────────────────────

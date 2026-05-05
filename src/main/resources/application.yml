@@ -34,3 +34,28 @@ app:
     # (e.g. full method bodies) at the cost of a larger diff sent to the LLM.
     # Increase GIT_MAX_DIFF_LINES proportionally when raising this value.
     context-lines: ${GIT_CONTEXT_LINES:50}
+
+  # ── Local static-analysis tools ─────────────────────────────────────────────
+  # When enabled, these tools run in the git working directory before the review.
+  # Their combined output is injected into the LLM prompt as "## Static Analysis Results",
+  # giving the LLM concrete findings to reference instead of having to re-invent them.
+  #
+  # All tools are disabled by default — opt in by setting enabled: true here or via
+  # environment variables (APP_LOCAL_TOOLS_ENABLED=true, etc.).
+  local-tools:
+    # Master switch — false means no tools are run at all.
+    enabled: ${LOCAL_TOOLS_ENABLED:false}
+    # Seconds each tool subprocess is allowed to run before it is killed.
+    timeout-seconds: ${LOCAL_TOOLS_TIMEOUT_SECONDS:120}
+    # Maximum lines of output captured per tool before truncation.
+    max-output-lines: ${LOCAL_TOOLS_MAX_OUTPUT_LINES:200}
+    tools:
+      - name: checkstyle
+        enabled: false
+        command: ["mvn", "-q", "checkstyle:check"]
+      - name: spotbugs
+        enabled: false
+        command: ["mvn", "-q", "spotbugs:check"]
+      - name: tests
+        enabled: false
+        command: ["mvn", "-q", "test"]

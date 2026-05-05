@@ -13,6 +13,7 @@ import com.mohsenzamni.mrreviewer.exception.LLMException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -28,6 +29,8 @@ class ReviewServiceTest {
     @Mock private GitLabClient gitLabClient;
     @Mock private GitService gitService;
     @Mock private LiteLLMClient liteLLMClient;
+    @Mock private LocalToolsService localToolsService;
+    @Mock private ProjectConfigService projectConfigService;
 
     private ReviewService reviewService;
     private ReviewHistoryService historyService;
@@ -42,7 +45,8 @@ class ReviewServiceTest {
         AppConfig config = new AppConfig();
         historyService = new ReviewHistoryService();
         reviewService = new ReviewService(gitLabClient, gitService, liteLLMClient,
-                historyService, new ObjectMapper(), config);
+                historyService, localToolsService, projectConfigService,
+                new ObjectMapper(), config);
     }
 
     // ── No local changes ──────────────────────────────────────────────────────
@@ -378,5 +382,119 @@ class ReviewServiceTest {
                 () -> reviewService.review(req("https://gitlab.com/org/proj/-/issues/9")))
                 .isInstanceOf(LLMException.class)
                 .hasMessageContaining("Failed to parse LLM JSON response");
+    }
+
+    // ── Project-level skills ──────────────────────────────────────────────────
+
+    @Test
+    void review_usesProjectSkills_whenNoRequestSkillsSupplied() {
+        when(projectConfigService.loadSkills()).thenReturn("Domain skill A, Domain skill B");
+        when(gitLabClient.fetchIssue(any()))
+                .thenReturn(new GitLabIssue(30L, "Auth refactor", "Refactor auth module."));
+        when(gitService.getDiff())
+                .thenReturn(new GitDiff(List.of("AuthService.java"),
+                        "diff --git a/AuthService.java ...", false));
+        when(liteLLMClient.chat(anyString(), anyString())).thenReturn(minimalLlmJson());
+
+        ArgumentCaptor<String> systemPromptCaptor = ArgumentCaptor.forClass(String.class);
+        reviewService.review(req("https://gitlab.com/org/proj/-/issues/30"));
+
+        verify(liteLLMClient).chat(systemPromptCaptor.capture(), anyString());
+        assertThat(systemPromptCaptor.getValue()).contains("Domain skill A, Domain skill B");
+    }
+
+    @Test
+    void review_usesRequestSkills_overProjectSkills() {
+        // project skills should never be consulted when request-level skills are present
+        when(gitLabClient.fetchIssue(any()))
+                .thenReturn(new GitLabIssue(31L, "Auth refactor", "Refactor auth module."));
+        when(gitService.getDiff())
+                .thenReturn(new GitDiff(List.of("AuthService.java"),
+                        "diff --git a/AuthService.java ...", false));
+        when(liteLLMClient.chat(anyString(), anyString())).thenReturn(minimalLlmJson());
+
+        ArgumentCaptor<String> systemPromptCaptor = ArgumentCaptor.forClass(String.class);
+        reviewService.review(new ReviewRequest(
+                "https://gitlab.com/org/proj/-/issues/31", "Request-level skills override"));
+
+        verify(liteLLMClient).chat(systemPromptCaptor.capture(), anyString());
+        assertThat(systemPromptCaptor.getValue()).contains("Request-level skills override");
+        // project config must not be read when request skills are explicit
+        verifyNoInteractions(projectConfigService);
+    }
+
+    @Test
+    void review_usesDefaultSkills_whenNeitherRequestNorProjectSkillsPresent() {
+        when(projectConfigService.loadSkills()).thenReturn(null);
+        when(gitLabClient.fetchIssue(any()))
+                .thenReturn(new GitLabIssue(32L, "Auth refactor", "Refactor auth module."));
+        when(gitService.getDiff())
+                .thenReturn(new GitDiff(List.of("AuthService.java"),
+                        "diff --git a/AuthService.java ...", false));
+        when(liteLLMClient.chat(anyString(), anyString())).thenReturn(minimalLlmJson());
+
+        ArgumentCaptor<String> systemPromptCaptor = ArgumentCaptor.forClass(String.class);
+        reviewService.review(req("https://gitlab.com/org/proj/-/issues/32"));
+
+        verify(liteLLMClient).chat(systemPromptCaptor.capture(), anyString());
+        assertThat(systemPromptCaptor.getValue()).contains(ReviewRequest.DEFAULT_SKILLS);
+    }
+
+    // ── Static analysis injection ─────────────────────────────────────────────
+
+    @Test
+    void review_injectsStaticAnalysis_inUserPrompt_whenToolResultsPresent() {
+        when(localToolsService.runAll()).thenReturn(List.of(
+                new LocalToolsService.ToolResult("checkstyle",
+                        "[ERROR] AuthService.java:42: Line too long (120 > 100).")));
+        when(gitLabClient.fetchIssue(any()))
+                .thenReturn(new GitLabIssue(33L, "Auth refactor", "Refactor auth module."));
+        when(gitService.getDiff())
+                .thenReturn(new GitDiff(List.of("AuthService.java"),
+                        "diff --git a/AuthService.java ...", false));
+        when(liteLLMClient.chat(anyString(), anyString())).thenReturn(minimalLlmJson());
+
+        ArgumentCaptor<String> userPromptCaptor = ArgumentCaptor.forClass(String.class);
+        reviewService.review(req("https://gitlab.com/org/proj/-/issues/33"));
+
+        verify(liteLLMClient).chat(anyString(), userPromptCaptor.capture());
+        String userPrompt = userPromptCaptor.getValue();
+        assertThat(userPrompt).contains("## Static Analysis Results");
+        assertThat(userPrompt).contains("### checkstyle");
+        assertThat(userPrompt).contains("Line too long");
+    }
+
+    @Test
+    void review_omitsStaticAnalysisSection_whenNoToolResults() {
+        when(localToolsService.runAll()).thenReturn(List.of());
+        when(gitLabClient.fetchIssue(any()))
+                .thenReturn(new GitLabIssue(34L, "Auth refactor", "Refactor auth module."));
+        when(gitService.getDiff())
+                .thenReturn(new GitDiff(List.of("AuthService.java"),
+                        "diff --git a/AuthService.java ...", false));
+        when(liteLLMClient.chat(anyString(), anyString())).thenReturn(minimalLlmJson());
+
+        ArgumentCaptor<String> userPromptCaptor = ArgumentCaptor.forClass(String.class);
+        reviewService.review(req("https://gitlab.com/org/proj/-/issues/34"));
+
+        verify(liteLLMClient).chat(anyString(), userPromptCaptor.capture());
+        assertThat(userPromptCaptor.getValue()).doesNotContain("## Static Analysis Results");
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /** Minimal valid LLM JSON response for tests that only care about side-effects. */
+    private static String minimalLlmJson() {
+        return """
+                {
+                  "summary": "S",
+                  "addressed_items": [],
+                  "total_items": 0,
+                  "gaps": [],
+                  "unrelated_changes": [],
+                  "verdict": "NOT_RESOLVED",
+                  "confidence": 0.5
+                }
+                """;
     }
 }
