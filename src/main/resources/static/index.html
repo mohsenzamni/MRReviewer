@@ -316,6 +316,126 @@
     /* ── Loading & error ── */
     #loading { display: none; color: #64748b; font-size: 0.9rem; margin-top: 0.8rem; }
     #error-msg { display: none; color: #dc2626; font-size: 0.9rem; margin-top: 0.8rem; }
+
+    /* ── Tab navigation ── */
+    .tab-nav {
+      display: flex;
+      gap: 0.25rem;
+      margin-bottom: 1.75rem;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 0;
+    }
+    .tab-btn {
+      padding: 0.6rem 1.4rem;
+      border: none;
+      background: none;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #64748b;
+      cursor: pointer;
+      border-radius: 8px 8px 0 0;
+      margin-bottom: -2px;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+      font-family: inherit;
+    }
+    .tab-btn:hover { color: #4338ca; }
+    .tab-btn.active { color: #4338ca; border-bottom-color: #6366f1; }
+
+    /* ── Chat UI ── */
+    #chat-section { display: none; }
+    .chat-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 1rem;
+    }
+    .btn-ghost {
+      background: none;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 0.4rem 0.9rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #64748b;
+      cursor: pointer;
+      font-family: inherit;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-ghost:hover { border-color: #a5b4fc; color: #4338ca; }
+
+    .chat-messages {
+      min-height: 300px;
+      max-height: 520px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+      margin-bottom: 1rem;
+    }
+    .chat-empty {
+      color: #94a3b8;
+      font-size: 0.9rem;
+      text-align: center;
+      padding: 3rem 0;
+    }
+    .chat-bubble {
+      max-width: 80%;
+      padding: 0.7rem 1rem;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .chat-bubble.user {
+      background: #6366f1;
+      color: #fff;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+    .chat-bubble.assistant {
+      background: #f1f5f9;
+      color: #1e293b;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+    .chat-bubble.thinking {
+      background: #f1f5f9;
+      color: #94a3b8;
+      font-style: italic;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+
+    .chat-input-row {
+      display: flex;
+      gap: 0.6rem;
+      align-items: flex-end;
+    }
+    .chat-input-row textarea {
+      flex: 1;
+      min-height: 48px;
+      max-height: 160px;
+      resize: none;
+      overflow-y: auto;
+    }
+    .btn-send {
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.65rem 1.3rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      font-family: inherit;
+      transition: background 0.15s, opacity 0.15s;
+      flex-shrink: 0;
+    }
+    .btn-send:hover { background: #4f46e5; }
+    .btn-send:disabled { opacity: 0.5; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -323,6 +443,15 @@
 
   <h1>🔍 MR Reviewer</h1>
   <p class="subtitle">AI-powered pre-push code review — analyze your local branch against a GitLab issue before you push.</p>
+
+  <!-- ── Tab navigation ── -->
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="review">📋 Review</button>
+    <button class="tab-btn" data-tab="chat">💬 Chat with AI</button>
+  </nav>
+
+  <!-- ── Review section ── -->
+  <div id="review-section">
 
   <!-- ── Form ── -->
   <div class="card">
@@ -441,9 +570,27 @@
       <div class="tag-list" id="unrelated-list"></div>
     </div>
 
+  </div><!-- end review result card -->
+
+  </div><!-- end review-section -->
+
+  <!-- ── Chat section ── -->
+  <div id="chat-section">
+    <div class="card">
+      <div class="chat-toolbar">
+        <button type="button" class="btn-ghost" id="new-session-btn">✦ New Session</button>
+      </div>
+      <div class="chat-messages" id="chat-messages">
+        <div class="chat-empty" id="chat-empty">Ask anything — start a new conversation with the AI.</div>
+      </div>
+      <div class="chat-input-row">
+        <textarea id="chat-input" placeholder="Type your message… (Shift+Enter for newline)" rows="2"></textarea>
+        <button type="button" class="btn-send" id="chat-send-btn">Send ➤</button>
+      </div>
+    </div>
   </div>
 
-</div>
+</div><!-- end container -->
 
 <script>
   // ── Project presets ──────────────────────────────────────────────────────────
@@ -680,6 +827,104 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
   }
+
+  // ── Tab navigation ──────────────────────────────────────────────────────────
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const tab = btn.dataset.tab;
+      document.getElementById("review-section").style.display = tab === "review" ? "block" : "none";
+      document.getElementById("chat-section").style.display   = tab === "chat"   ? "block" : "none";
+    });
+  });
+
+  // ── Chat ─────────────────────────────────────────────────────────────────────
+  let chatSessionId = null;
+
+  const chatMessages  = document.getElementById("chat-messages");
+  const chatInput     = document.getElementById("chat-input");
+  const chatSendBtn   = document.getElementById("chat-send-btn");
+  const chatEmpty     = document.getElementById("chat-empty");
+  const newSessionBtn = document.getElementById("new-session-btn");
+
+  function appendBubble(role, text) {
+    chatEmpty.style.display = "none";
+    const div = document.createElement("div");
+    div.className = "chat-bubble " + role;
+    div.textContent = text;
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    return div;
+  }
+
+  async function sendChatMessage() {
+    const text = chatInput.value.trim();
+    if (!text) return;
+
+    chatInput.value = "";
+    chatInput.style.height = "";
+    chatSendBtn.disabled = true;
+
+    appendBubble("user", text);
+    const thinking = appendBubble("thinking", "⏳ Thinking…");
+
+    try {
+      const resp = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: chatSessionId, message: text }),
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`Server returned ${resp.status}: ${errText}`);
+      }
+
+      const data = await resp.json();
+      chatSessionId = data.sessionId;
+
+      thinking.className = "chat-bubble assistant";
+      thinking.textContent = data.reply;
+    } catch (err) {
+      thinking.className = "chat-bubble assistant";
+      thinking.textContent = "❌ " + err.message;
+    } finally {
+      chatSendBtn.disabled = false;
+      chatInput.focus();
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+  }
+
+  chatSendBtn.addEventListener("click", sendChatMessage);
+
+  chatInput.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendChatMessage();
+    }
+  });
+
+  // Auto-grow textarea
+  chatInput.addEventListener("input", () => {
+    chatInput.style.height = "auto";
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 160) + "px";
+  });
+
+  newSessionBtn.addEventListener("click", async () => {
+    if (chatSessionId) {
+      try {
+        await fetch("/chat/" + encodeURIComponent(chatSessionId), { method: "DELETE" });
+      } catch (_) { /* ignore */ }
+    }
+    chatSessionId = null;
+    chatMessages.innerHTML = "";
+    chatMessages.appendChild(chatEmpty);
+    chatEmpty.style.display = "block";
+    chatInput.value = "";
+    chatInput.style.height = "";
+    chatInput.focus();
+  });
 </script>
 </body>
 </html>

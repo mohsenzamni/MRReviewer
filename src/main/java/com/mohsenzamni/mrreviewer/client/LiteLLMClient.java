@@ -65,6 +65,33 @@ public class LiteLLMClient {
         String endpoint = llmConfig.getBaseUrl() + "/chat/completions";
         log.info("Calling LiteLLM at {} with model '{}'", endpoint, llmConfig.getModelName());
 
+        return doRequest(endpoint, requestBody);
+    }
+
+    /**
+     * Sends a full multi-turn conversation history to the LLM.
+     * Unlike {@link #chat(String, String)}, the response is returned as plain text
+     * (no {@code response_format: json_object} constraint).
+     *
+     * @param messages ordered list of messages (system, user, assistant, …)
+     * @return the assistant's reply text
+     * @throws LLMException on any communication or parsing failure
+     */
+    public String chatMultiTurn(List<LLMRequest.Message> messages) {
+        AppConfig.LiteLLM llmConfig = config.getLitellm();
+
+        LLMRequest requestBody = new LLMRequest(llmConfig.getModelName(), messages, null);
+
+        String endpoint = llmConfig.getBaseUrl() + "/chat/completions";
+        log.info("Calling LiteLLM (multi-turn) at {} with model '{}'", endpoint, llmConfig.getModelName());
+
+        return doRequest(endpoint, requestBody);
+    }
+
+    // ── internal helpers ──────────────────────────────────────────────────────
+
+    private String doRequest(String endpoint, LLMRequest requestBody) {
+
         try {
             HttpHeaders headers = buildHeaders();
             HttpEntity<LLMRequest> entity = new HttpEntity<>(requestBody, headers);
