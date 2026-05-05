@@ -26,5 +26,11 @@ app:
     working-dir: ${GIT_WORKING_DIR:.}
     # Remote base branch for the diff  (git diff <base-branch>...HEAD)
     base-branch: ${GIT_BASE_BRANCH:origin/main}
-    # Hard cap on diff lines sent to the LLM (avoids token-limit errors)
-    max-diff-lines: ${GIT_MAX_DIFF_LINES:2000}
+    # Hard cap on diff lines sent to the LLM (avoids token-limit errors).
+    # With context-lines=50 each changed hunk adds ~100 lines of context,
+    # so 4000 comfortably handles ~20-40 changed hunks before truncation.
+    max-diff-lines: ${GIT_MAX_DIFF_LINES:4000}
+    # Unified context lines per hunk (-U<n>); higher values include more surrounding code
+    # (e.g. full method bodies) at the cost of a larger diff sent to the LLM.
+    # Increase GIT_MAX_DIFF_LINES proportionally when raising this value.
+    context-lines: ${GIT_CONTEXT_LINES:50}

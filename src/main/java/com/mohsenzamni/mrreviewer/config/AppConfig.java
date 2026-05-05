@@ -59,9 +59,15 @@ public class AppConfig {
         /** Working directory in which git commands are executed. Defaults to current JVM directory. */
         private String workingDir = ".";
         /** Maximum number of diff lines forwarded to the LLM (prevents huge prompts). */
-        private int maxDiffLines = 2000;
+        private int maxDiffLines = 4000;
         /** Remote branch used as the comparison base. */
         private String baseBranch = "origin/main";
+        /**
+         * Number of unified context lines included around each changed hunk ({@code git diff -U<n>}).
+         * Larger values give the LLM more surrounding code for each change (e.g. full method bodies),
+         * at the cost of a larger diff. 50 is a good default for most Java codebases.
+         */
+        private int contextLines = 50;
 
         public String getWorkingDir() { return workingDir; }
         public void setWorkingDir(String workingDir) { this.workingDir = workingDir; }
@@ -71,6 +77,9 @@ public class AppConfig {
 
         public String getBaseBranch() { return baseBranch; }
         public void setBaseBranch(String baseBranch) { this.baseBranch = baseBranch; }
+
+        public int getContextLines() { return contextLines; }
+        public void setContextLines(int contextLines) { this.contextLines = contextLines; }
     }
 
     // ── Shared beans ──────────────────────────────────────────────────────────

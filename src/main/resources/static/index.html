@@ -5,12 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>MR Reviewer</title>
   <style>
+    /* ── Reset ── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    /* ── Base ── */
     body {
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      background: #0f1117;
-      color: #e2e8f0;
+      background: #f1f5f9;
+      color: #1e293b;
       min-height: 100vh;
       padding: 2rem 1rem;
     }
@@ -20,51 +22,92 @@
     h1 {
       font-size: 1.75rem;
       font-weight: 700;
-      color: #f8fafc;
+      color: #0f172a;
       margin-bottom: 0.25rem;
     }
-    .subtitle { color: #94a3b8; font-size: 0.95rem; margin-bottom: 2rem; }
+    .subtitle { color: #64748b; font-size: 0.95rem; margin-bottom: 2rem; }
 
+    /* ── Cards ── */
     .card {
-      background: #1e2130;
-      border: 1px solid #2d3348;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
       border-radius: 12px;
       padding: 1.5rem;
       margin-bottom: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07);
     }
     .card h2 {
-      font-size: 1rem;
-      font-weight: 600;
-      color: #cbd5e1;
-      margin-bottom: 1rem;
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #475569;
+      margin-bottom: 1.2rem;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.07em;
     }
 
+    /* ── Form elements ── */
     label {
       display: block;
       font-size: 0.875rem;
-      color: #94a3b8;
+      color: #475569;
       margin-bottom: 0.4rem;
+      font-weight: 500;
     }
-    input[type="text"], textarea {
+    .required { color: #ef4444; }
+
+    input[type="text"],
+    input[type="number"],
+    textarea {
       width: 100%;
-      background: #0f1117;
-      border: 1px solid #2d3348;
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
       border-radius: 8px;
-      color: #e2e8f0;
+      color: #1e293b;
       font-size: 0.9rem;
       padding: 0.6rem 0.85rem;
       outline: none;
-      transition: border-color 0.15s;
+      transition: border-color 0.15s, box-shadow 0.15s;
       font-family: inherit;
     }
-    input[type="text"]:focus, textarea:focus { border-color: #6366f1; }
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    textarea:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+    }
+    /* hide number-input spinners */
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    input[type="number"] { -moz-appearance: textfield; }
+
     textarea { resize: vertical; min-height: 110px; }
-
     .form-row { margin-bottom: 1.1rem; }
-    .form-row:last-child { margin-bottom: 0; }
 
+    /* ── Project picker ── */
+    .project-picker { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.25rem; }
+    .proj-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.15rem;
+      padding: 0.55rem 1rem;
+      border-radius: 8px;
+      border: 2px solid #e2e8f0;
+      background: #f8fafc;
+      color: #475569;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s, color 0.15s;
+      font-family: inherit;
+      text-align: left;
+    }
+    .proj-btn:hover { border-color: #a5b4fc; background: #f5f3ff; color: #4338ca; }
+    .proj-btn.active { border-color: #6366f1; background: #eef2ff; color: #4338ca; }
+    .proj-url { font-size: 0.72rem; font-weight: 400; color: #94a3b8; font-family: monospace; }
+    .proj-btn.active .proj-url { color: #818cf8; }
+
+    /* ── Submit button ── */
     button[type="submit"] {
       background: #6366f1;
       color: #fff;
@@ -82,20 +125,20 @@
     /* ── Result card ── */
     #result { display: none; }
 
-    /* ── Executive summary box ── */
+    /* ── Executive summary ── */
     .exec-summary {
-      background: #161b2e;
-      border: 1px solid #2d3f6b;
+      background: #f0f4ff;
+      border: 1px solid #c7d2fe;
       border-left: 4px solid #6366f1;
       border-radius: 8px;
       padding: 1rem 1.2rem;
-      color: #cbd5e1;
+      color: #1e293b;
       font-size: 0.95rem;
-      line-height: 1.6;
+      line-height: 1.7;
       margin-bottom: 1.5rem;
     }
 
-    /* ── Verdict + confidence row ── */
+    /* ── Verdict + confidence ── */
     .verdict-row {
       display: flex;
       align-items: center;
@@ -110,32 +153,36 @@
       font-weight: 700;
       font-size: 0.85rem;
       letter-spacing: 0.04em;
+      border: 1.5px solid transparent;
     }
-    .verdict-FULLY_RESOLVED     { background: #14532d; color: #86efac; }
-    .verdict-PARTIALLY_RESOLVED { background: #78350f; color: #fcd34d; }
-    .verdict-NOT_RESOLVED       { background: #7f1d1d; color: #fca5a5; }
+    .verdict-FULLY_RESOLVED     { background: #dcfce7; color: #15803d; border-color: #86efac; }
+    .verdict-PARTIALLY_RESOLVED { background: #fef9c3; color: #854d0e; border-color: #fde047; }
+    .verdict-NOT_RESOLVED       { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
 
-    .confidence-widget { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #94a3b8; flex: 1; min-width: 160px; }
-    .confidence-bar-bg { flex: 1; background: #2d3348; border-radius: 999px; height: 6px; }
+    .confidence-widget {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      color: #64748b;
+      flex: 1;
+      min-width: 160px;
+    }
+    .confidence-bar-bg { flex: 1; background: #e2e8f0; border-radius: 999px; height: 6px; }
     .confidence-bar-fill { height: 6px; border-radius: 999px; background: #6366f1; transition: width 0.4s ease; }
 
     /* ── Addressed items ── */
-    .addressed-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-bottom: 1.2rem;
-    }
+    .addressed-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; }
     .addressed-item {
-      display: flex;
+      display: inline-flex;
       align-items: center;
       gap: 0.35rem;
-      background: #0d2818;
-      border: 1px solid #166534;
+      background: #f0fdf4;
+      border: 1px solid #86efac;
       border-radius: 6px;
       padding: 0.3rem 0.7rem;
       font-size: 0.83rem;
-      color: #86efac;
+      color: #166534;
     }
     .addressed-item::before { content: "✓"; font-weight: 700; }
 
@@ -149,16 +196,17 @@
     }
     .section-header:first-of-type { margin-top: 0; }
     .section-header h3 {
-      font-size: 0.78rem;
+      font-size: 0.75rem;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      color: #64748b;
+      color: #94a3b8;
     }
     .section-count {
       font-size: 0.72rem;
-      background: #2d3348;
-      color: #94a3b8;
+      background: #f1f5f9;
+      color: #64748b;
+      border: 1px solid #e2e8f0;
       border-radius: 999px;
       padding: 0.1rem 0.5rem;
       font-weight: 600;
@@ -169,102 +217,105 @@
       width: 100%;
       border-collapse: collapse;
       font-size: 0.875rem;
+      table-layout: fixed;
     }
+    .findings-table col.col-id   { width: 3.5rem; }
+    .findings-table col.col-file { width: 11rem; }
+    /* col-desc fills remaining width automatically */
+
     .findings-table th {
       text-align: left;
-      color: #64748b;
+      color: #94a3b8;
       font-weight: 600;
-      font-size: 0.78rem;
+      font-size: 0.75rem;
       text-transform: uppercase;
       letter-spacing: 0.06em;
       padding: 0.5rem 0.75rem;
-      border-bottom: 1px solid #2d3348;
+      border-bottom: 2px solid #f1f5f9;
     }
     .findings-table td {
       padding: 0.75rem;
       vertical-align: top;
-      border-bottom: 1px solid #1a1f30;
+      border-bottom: 1px solid #f1f5f9;
       line-height: 1.5;
+      overflow-wrap: break-word;
+      word-break: break-word;
     }
     .findings-table tr:last-child td { border-bottom: none; }
-    .findings-table tr:hover td { background: #1a1f2e; }
+    .findings-table tbody tr:hover td { background: #f8fafc; }
 
-    .finding-id {
-      font-family: monospace;
-      font-weight: 700;
-      font-size: 0.85rem;
-      white-space: nowrap;
-    }
-    .sev-CRITICAL .finding-id { color: #fca5a5; }
-    .sev-HIGH     .finding-id { color: #fdba74; }
-    .sev-MEDIUM   .finding-id { color: #fcd34d; }
-    .sev-LOW      .finding-id { color: #86efac; }
+    .finding-id { font-family: monospace; font-weight: 700; font-size: 0.85rem; }
+    .sev-CRITICAL .finding-id { color: #dc2626; }
+    .sev-HIGH     .finding-id { color: #ea580c; }
+    .sev-MEDIUM   .finding-id { color: #ca8a04; }
+    .sev-LOW      .finding-id { color: #16a34a; }
 
+    /* file:line — allow wrapping, no nowrap */
     .file-loc {
       font-family: monospace;
       font-size: 0.78rem;
-      color: #818cf8;
-      white-space: nowrap;
+      color: #6366f1;
+      overflow-wrap: break-word;
+      word-break: break-all;
     }
-    .no-location { color: #475569; font-size: 0.78rem; font-style: italic; }
+    .no-location { color: #94a3b8; font-size: 0.78rem; font-style: italic; }
 
-    .finding-desc { color: #e2e8f0; margin-bottom: 0.5rem; }
+    .finding-desc { color: #1e293b; margin-bottom: 0.4rem; }
     .finding-rec {
-      color: #94a3b8;
+      color: #475569;
       font-size: 0.83rem;
-      border-left: 2px solid #334155;
+      border-left: 2px solid #c7d2fe;
       padding-left: 0.6rem;
       margin-top: 0.4rem;
     }
     .finding-rec::before { content: "→ "; color: #6366f1; font-weight: 700; }
 
-    /* ── Severity section separators ── */
+    /* ── Severity group headers ── */
     .sev-group-header td {
-      padding: 0.5rem 0.75rem 0.25rem;
+      padding: 0.6rem 0.75rem 0.25rem;
       border-bottom: none;
+      background: #f8fafc;
     }
     .sev-label {
       display: inline-block;
-      padding: 0.2rem 0.7rem;
+      padding: 0.2rem 0.75rem;
       border-radius: 4px;
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       font-weight: 700;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.06em;
+      border: 1px solid transparent;
     }
-    .sev-label-CRITICAL { background: #450a0a; color: #fca5a5; }
-    .sev-label-HIGH     { background: #431407; color: #fdba74; }
-    .sev-label-MEDIUM   { background: #422006; color: #fcd34d; }
-    .sev-label-LOW      { background: #052e16; color: #86efac; }
+    .sev-label-CRITICAL { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+    .sev-label-HIGH     { background: #ffedd5; color: #9a3412; border-color: #fdba74; }
+    .sev-label-MEDIUM   { background: #fef9c3; color: #854d0e; border-color: #fde047; }
+    .sev-label-LOW      { background: #dcfce7; color: #166534; border-color: #86efac; }
 
     /* ── Unrelated changes ── */
     .tag-list { display: flex; flex-wrap: wrap; gap: 0.4rem; }
     .tag {
-      background: #1e2130;
-      border: 1px solid #2d3348;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
       border-radius: 6px;
       padding: 0.25rem 0.65rem;
       font-size: 0.82rem;
-      color: #94a3b8;
+      color: #475569;
     }
 
     /* ── History note ── */
     #history-note {
       display: none;
-      background: #1e2d40;
-      border: 1px solid #2d4a6b;
+      background: #f0f9ff;
+      border: 1px solid #bae6fd;
       border-radius: 8px;
       padding: 0.6rem 1rem;
-      color: #7dd3fc;
+      color: #0369a1;
       font-size: 0.85rem;
       margin-bottom: 1rem;
     }
 
     /* ── Loading & error ── */
-    #loading { display: none; color: #94a3b8; font-size: 0.9rem; margin-top: 0.8rem; }
-    #error-msg { display: none; color: #fca5a5; font-size: 0.9rem; margin-top: 0.8rem; }
-
-    /* ── Empty state ── */
-    .empty-state { color: #475569; font-size: 0.875rem; font-style: italic; padding: 0.5rem 0; }
+    #loading { display: none; color: #64748b; font-size: 0.9rem; margin-top: 0.8rem; }
+    #error-msg { display: none; color: #dc2626; font-size: 0.9rem; margin-top: 0.8rem; }
   </style>
 </head>
 <body>
@@ -278,19 +329,45 @@
     <h2>Review Configuration</h2>
     <form id="review-form">
 
+      <!-- Project picker -->
       <div class="form-row">
-        <label for="issueUrl">GitLab Issue URL <span style="color:#ef4444">*</span></label>
-        <input type="text" id="issueUrl" name="issueUrl" required
+        <label>Project <span class="required">*</span></label>
+        <div class="project-picker">
+          <button type="button" class="proj-btn active" data-proj="core">
+            Core
+            <span class="proj-url">acs-core/-/issues/…</span>
+          </button>
+          <button type="button" class="proj-btn" data-proj="ui">
+            UI (Admin)
+            <span class="proj-url">acs-admin/-/issues/…</span>
+          </button>
+          <button type="button" class="proj-btn" data-proj="custom">
+            Custom URL
+          </button>
+        </div>
+      </div>
+
+      <!-- Issue number (Core / UI mode) -->
+      <div class="form-row" id="issue-num-row">
+        <label for="issueNumber">Issue Number <span class="required">*</span></label>
+        <input type="number" id="issueNumber" min="1" placeholder="e.g. 701"/>
+      </div>
+
+      <!-- Full URL (Custom mode) -->
+      <div class="form-row" id="custom-url-row" style="display:none;">
+        <label for="customUrl">GitLab Issue URL <span class="required">*</span></label>
+        <input type="text" id="customUrl"
                placeholder="https://gitlab.example.com/group/project/-/issues/42"/>
       </div>
 
+      <!-- Reviewer skills -->
       <div class="form-row">
         <label for="reviewerSkills">Reviewer Skills / Focus Areas</label>
         <textarea id="reviewerSkills" name="reviewerSkills"
                   placeholder="Leave blank to use the default skill set"></textarea>
         <div style="margin-top:0.4rem; display:flex; justify-content:flex-end;">
           <button type="button" id="reset-skills"
-                  style="background:none;border:none;color:#6366f1;font-size:0.8rem;cursor:pointer;padding:0;">
+                  style="background:none;border:none;color:#6366f1;font-size:0.8rem;cursor:pointer;padding:0;font-family:inherit;">
             ↺ Reset to defaults
           </button>
         </div>
@@ -339,10 +416,15 @@
         <span class="section-count" id="findings-count"></span>
       </div>
       <table class="findings-table" id="findings-table">
+        <colgroup>
+          <col class="col-id"/>
+          <col class="col-file"/>
+          <col class="col-desc"/>
+        </colgroup>
         <thead>
           <tr>
-            <th style="width:3.5rem">ID</th>
-            <th style="width:13rem">File : Line</th>
+            <th>ID</th>
+            <th>File : Line</th>
             <th>Description &amp; Recommendation</th>
           </tr>
         </thead>
@@ -364,6 +446,37 @@
 </div>
 
 <script>
+  // ── Project presets ──────────────────────────────────────────────────────────
+  // Update these base URLs to match your GitLab instance and project paths.
+  const PROJECT_BASES = {
+    core: "https://git.creative.com.au/gpayments/acs-ds-sim/acs-core/-/issues/",
+    ui:   "https://git.creative.com.au/gpayments/acs-ds-sim/acs-admin/-/issues/",
+  };
+
+  let selectedProject = "core";
+
+  document.querySelectorAll(".proj-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".proj-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      selectedProject = btn.dataset.proj;
+      const isCustom = selectedProject === "custom";
+      document.getElementById("issue-num-row").style.display  = isCustom ? "none"  : "block";
+      document.getElementById("custom-url-row").style.display = isCustom ? "block" : "none";
+    });
+  });
+
+  function buildIssueUrl() {
+    if (selectedProject === "custom") {
+      return document.getElementById("customUrl").value.trim();
+    }
+    const raw = document.getElementById("issueNumber").value.trim();
+    const num = parseInt(raw, 10);
+    if (!raw || isNaN(num) || num < 1) return null;
+    return PROJECT_BASES[selectedProject] + num;
+  }
+
+  // ── Default skills ───────────────────────────────────────────────────────────
   const DEFAULT_SKILLS =
     "Security vulnerabilities, Performance, Code quality and readability, " +
     "Test coverage, SOLID principles, Design patterns, Error handling, " +
@@ -376,17 +489,24 @@
     skillsField.value = DEFAULT_SKILLS;
   });
 
+  // ── Form submit ──────────────────────────────────────────────────────────────
   let reviewCount = {};
 
   document.getElementById("review-form").addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const issueUrl       = document.getElementById("issueUrl").value.trim();
+    const issueUrl       = buildIssueUrl();
     const reviewerSkills = skillsField.value.trim();
     const submitBtn      = document.getElementById("submit-btn");
     const loading        = document.getElementById("loading");
     const errorDiv       = document.getElementById("error-msg");
     const resultCard     = document.getElementById("result");
+
+    if (!issueUrl) {
+      errorDiv.textContent = "❌ Please enter a valid issue number (or full URL for Custom mode).";
+      errorDiv.style.display = "block";
+      return;
+    }
 
     submitBtn.disabled = true;
     loading.style.display = "block";
@@ -418,6 +538,7 @@
     }
   });
 
+  // ── Render result ────────────────────────────────────────────────────────────
   function renderResult(data, issueUrl, cycle) {
     const resultCard = document.getElementById("result");
     resultCard.style.display = "block";
@@ -475,9 +596,7 @@
 
     if (gaps.length > 0) {
       findingsSection.style.display = "block";
-
       const SEV_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
-      // Group by severity (already sorted by server, but group for section headers)
       const grouped = {};
       SEV_ORDER.forEach(s => grouped[s] = []);
       gaps.forEach(f => {
@@ -507,7 +626,7 @@
           const tdId = document.createElement("td");
           tdId.innerHTML = `<span class="finding-id">${escapeHtml(f.id || "")}</span>`;
 
-          // File:line cell
+          // File:line cell (wraps naturally via CSS word-break)
           const tdFile = document.createElement("td");
           if (f.file_location) {
             tdFile.innerHTML = `<span class="file-loc">${escapeHtml(f.file_location)}</span>`;
@@ -564,4 +683,3 @@
 </script>
 </body>
 </html>
-

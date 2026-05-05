@@ -96,9 +96,13 @@ public class GitService {
     }
 
     private GitDiff buildDiff(String baseBranch, File workDir, List<String> changedFiles) {
+        // -U<n> expands each changed hunk with n lines of surrounding context, giving the LLM
+        // full method bodies rather than just the modified lines.
+        String contextArg = "-U" + config.getGit().getContextLines();
+
         // Combine committed branch diff with uncommitted working-tree diff
-        String committedPatch = runGit(workDir, "git", "diff", baseBranch + "...HEAD");
-        String uncommittedPatch = runGit(workDir, "git", "diff", "HEAD");
+        String committedPatch   = runGit(workDir, "git", "diff", contextArg, baseBranch + "...HEAD");
+        String uncommittedPatch = runGit(workDir, "git", "diff", contextArg, "HEAD");
         String rawPatch = uncommittedPatch.isBlank()
                 ? committedPatch
                 : committedPatch + "\n" + uncommittedPatch;
