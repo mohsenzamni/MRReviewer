@@ -49,6 +49,13 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- SnakeYAML for parsing .mrreviewer.yml project config files -->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+            <!-- version managed by spring-boot-starter-parent BOM -->
+        </dependency>
+
         <!-- Spring Boot Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
