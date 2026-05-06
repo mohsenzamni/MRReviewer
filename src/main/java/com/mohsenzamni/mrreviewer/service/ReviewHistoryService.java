@@ -1,6 +1,6 @@
 package com.mohsenzamni.mrreviewer.service;
 
-import com.mohsenzamni.mrreviewer.dto.Finding;
+import com.mohsenzamni.mrreviewer.dto.AcReview;
 import com.mohsenzamni.mrreviewer.dto.ReviewResponse;
 import org.springframework.stereotype.Service;
 
@@ -8,14 +8,14 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Stores the review history for each issue (keyed by issue URL) in memory.
  *
- * <p>The history is used to give the LLM context about previous review cycles so that
- * it can track progress and avoid repeating the same feedback on already-fixed findings.
+ * <p>The history is passed back to the LLM in subsequent review cycles so that it can
+ * track progress and avoid repeating feedback on already-fixed items.
  *
  * <p>At most {@link #MAX_HISTORY_PER_ISSUE} past reviews are kept per issue URL.
  */
@@ -25,7 +25,7 @@ public class ReviewHistoryService {
     /** Maximum number of past reviews retained per issue. */
     static final int MAX_HISTORY_PER_ISSUE = 10;
 
-    /** issue URL → ordered list of past review summaries (oldest first). */
+    /** issue URL → ordered list of past reviews (oldest first). */
     private final Map<String, List<ReviewResponse>> history = new LinkedHashMap<>();
 
     /**
@@ -63,26 +63,34 @@ public class ReviewHistoryService {
 
         StringBuilder sb = new StringBuilder();
         sb.append("## Previous Review Cycles\n\n");
+
         for (int i = 0; i < past.size(); i++) {
             ReviewResponse r = past.get(i);
-            sb.append("### Cycle ").append(i + 1).append(" — verdict: ").append(r.verdict())
-              .append(" (confidence: ").append(String.format("%.2f", r.confidence())).append(")\n");
+            sb.append("### Cycle ").append(i + 1).append("\n");
             sb.append("**Summary:** ").append(r.summary()).append("\n");
-            if (r.addressedItems() != null && !r.addressedItems().isEmpty()) {
-                sb.append("**Addressed items (").append(r.addressedItems().size())
-                  .append("/").append(r.totalItems()).append("):**\n");
-                r.addressedItems().forEach(item ->
-                    sb.append("- ✓ ").append(item).append("\n")
-                );
+
+            if (r.acceptanceCriteriaReview() != null && !r.acceptanceCriteriaReview().isEmpty()) {
+                sb.append("**AC Coverage:**\n");
+                for (AcReview ac : r.acceptanceCriteriaReview()) {
+                    sb.append("- [").append(ac.status().toUpperCase(Locale.ROOT)).append("] ")
+                      .append(ac.ac());
+                    if (ac.issues() != null && !ac.issues().isEmpty()) {
+                        sb.append(" — Issues: ").append(String.join("; ", ac.issues()));
+                    }
+                    sb.append("\n");
+                }
             }
-            if (!r.gaps().isEmpty()) {
-                sb.append("**Findings (").append(r.gaps().size()).append("):**\n");
-                r.gaps().forEach(f ->
-                    sb.append("- [").append(f.id()).append("] [").append(f.severity()).append("] ")
-                      .append(f.fileLocation() != null ? f.fileLocation() + " — " : "")
-                      .append(f.description()).append("\n")
-                );
+
+            if (r.risks() != null && !r.risks().isEmpty()) {
+                sb.append("**Risks:**\n");
+                r.risks().forEach(risk -> sb.append("- ").append(risk).append("\n"));
             }
+
+            if (r.suggestions() != null && !r.suggestions().isEmpty()) {
+                sb.append("**Suggestions:**\n");
+                r.suggestions().forEach(s -> sb.append("- ").append(s).append("\n"));
+            }
+
             sb.append("\n");
         }
         return sb.toString();

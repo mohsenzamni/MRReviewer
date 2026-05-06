@@ -6,26 +6,20 @@ import java.util.List;
 /**
  * Final API response returned by POST /review.
  *
- * <p>Mirrors the professional reviewer report format:
+ * <p>The format follows the "MR Semantic Reviewer" design with per-acceptance-criterion traceability:
  * <ul>
- *   <li>{@code summary} — executive summary in the form
- *       "This MR delivers fixes for issue X — Y/Z items are addressed: …"</li>
- *   <li>{@code addressedItems} — list of issue acceptance criteria satisfied by the diff</li>
- *   <li>{@code totalItems} — total number of acceptance criteria identified in the issue</li>
- *   <li>{@code gaps} — findings grouped/sorted by severity, each with a file:line location
- *       and an actionable recommendation</li>
- *   <li>{@code unrelatedChanges} — changes in the diff that do not relate to the issue</li>
+ *   <li>{@code summary} — 2-3 sentence executive summary: what the MR does, overall quality, AC coverage.</li>
+ *   <li>{@code acceptanceCriteriaReview} — one entry per extracted AC with coverage status, code evidence,
+ *       and specific issues.</li>
+ *   <li>{@code risks} — cross-cutting concerns not tied to a single AC (security, performance,
+ *       backward compatibility, race conditions, etc.).</li>
+ *   <li>{@code suggestions} — non-blocking improvement ideas (code quality, test coverage, patterns).</li>
  * </ul>
  */
 public record ReviewResponse(
         String summary,
-        @JsonProperty("addressed_items")
-        List<String> addressedItems,
-        @JsonProperty("total_items")
-        int totalItems,
-        List<Finding> gaps,
-        @JsonProperty("unrelated_changes")
-        List<String> unrelatedChanges,
-        String verdict,
-        double confidence
+        @JsonProperty("acceptance_criteria_review")
+        List<AcReview> acceptanceCriteriaReview,
+        List<String> risks,
+        List<String> suggestions
 ) {}
