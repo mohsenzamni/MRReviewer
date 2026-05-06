@@ -1,0 +1,61 @@
+spring:
+  application:
+    name: MRReviewer
+
+server:
+  port: 8080
+
+app:
+  gitlab:
+    # Base URL of your GitLab instance (no trailing slash)
+    base-url: ${GITLAB_BASE_URL:https://gitlab.com}
+    # Personal Access Token with read_api scope (never logged)
+    token: ${GITLAB_TOKEN:}
+
+  litellm:
+    # LiteLLM proxy base URL (no trailing slash)
+    base-url: ${LITELLM_BASE_URL:http://localhost:4000}
+    # API key for the LiteLLM proxy (never logged)
+    api-key: ${LITELLM_API_KEY:}
+    # Model name forwarded to LiteLLM
+    model-name: ${MODEL_NAME:gpt-4o}
+
+  git:
+    # Absolute or relative path to the git repository to analyse
+    # Defaults to the current working directory of the JVM process
+    working-dir: ${GIT_WORKING_DIR:.}
+    # Remote base branch for the diff  (git diff <base-branch>...HEAD)
+    base-branch: ${GIT_BASE_BRANCH:origin/main}
+    # Hard cap on diff lines sent to the LLM (avoids token-limit errors).
+    # With context-lines=50 each changed hunk adds ~100 lines of context,
+    # so 4000 comfortably handles ~20-40 changed hunks before truncation.
+    max-diff-lines: ${GIT_MAX_DIFF_LINES:4000}
+    # Unified context lines per hunk (-U<n>); higher values include more surrounding code
+    # (e.g. full method bodies) at the cost of a larger diff sent to the LLM.
+    # Increase GIT_MAX_DIFF_LINES proportionally when raising this value.
+    context-lines: ${GIT_CONTEXT_LINES:50}
+
+  # ── Local static-analysis tools ─────────────────────────────────────────────
+  # When enabled, these tools run in the git working directory before the review.
+  # Their combined output is injected into the LLM prompt as "## Static Analysis Results",
+  # giving the LLM concrete findings to reference instead of having to re-invent them.
+  #
+  # All tools are disabled by default — opt in by setting enabled: true here or via
+  # environment variables (APP_LOCAL_TOOLS_ENABLED=true, etc.).
+  local-tools:
+    # Master switch — false means no tools are run at all.
+    enabled: ${LOCAL_TOOLS_ENABLED:false}
+    # Seconds each tool subprocess is allowed to run before it is killed.
+    timeout-seconds: ${LOCAL_TOOLS_TIMEOUT_SECONDS:120}
+    # Maximum lines of output captured per tool before truncation.
+    max-output-lines: ${LOCAL_TOOLS_MAX_OUTPUT_LINES:200}
+    tools:
+      - name: checkstyle
+        enabled: false
+        command: ["mvn", "-q", "checkstyle:check"]
+      - name: spotbugs
+        enabled: false
+        command: ["mvn", "-q", "spotbugs:check"]
+      - name: tests
+        enabled: false
+        command: ["mvn", "-q", "test"]

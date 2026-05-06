@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MR Reviewer</title>
+  <style>
+    /* ── Reset ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Base ── */
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    .container { max-width: 1000px; margin: 0 auto; }
+
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle { color: #64748b; font-size: 0.95rem; margin-bottom: 2rem; }
+
+    /* ── Cards ── */
+    .card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+    }
+    .card h2 {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #475569;
+      margin-bottom: 1.2rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+
+    /* ── Form elements ── */
+    label {
+      display: block;
+      font-size: 0.875rem;
+      color: #475569;
+      margin-bottom: 0.4rem;
+      font-weight: 500;
+    }
+    .required { color: #ef4444; }
+
+    input[type="text"],
+    input[type="number"],
+    textarea {
+      width: 100%;
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      color: #1e293b;
+      font-size: 0.9rem;
+      padding: 0.6rem 0.85rem;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      font-family: inherit;
+    }
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    textarea:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+    }
+    /* hide number-input spinners */
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    input[type="number"] { -moz-appearance: textfield; }
+
+    textarea { resize: vertical; min-height: 110px; }
+    .form-row { margin-bottom: 1.1rem; }
+
+    /* ── Project picker ── */
+    .project-picker { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.25rem; }
+    .proj-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.15rem;
+      padding: 0.55rem 1rem;
+      border-radius: 8px;
+      border: 2px solid #e2e8f0;
+      background: #f8fafc;
+      color: #475569;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s, color 0.15s;
+      font-family: inherit;
+      text-align: left;
+    }
+    .proj-btn:hover { border-color: #a5b4fc; background: #f5f3ff; color: #4338ca; }
+    .proj-btn.active { border-color: #6366f1; background: #eef2ff; color: #4338ca; }
+    .proj-url { font-size: 0.72rem; font-weight: 400; color: #94a3b8; font-family: monospace; }
+    .proj-btn.active .proj-url { color: #818cf8; }
+
+    /* ── Submit button ── */
+    button[type="submit"] {
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.7rem 1.6rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    button[type="submit"]:hover { background: #4f46e5; }
+    button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Result card ── */
+    #result { display: none; }
+
+    /* ── Executive summary ── */
+    .exec-summary {
+      background: #f0f4ff;
+      border: 1px solid #c7d2fe;
+      border-left: 4px solid #6366f1;
+      border-radius: 8px;
+      padding: 1rem 1.2rem;
+      color: #1e293b;
+      font-size: 0.95rem;
+      line-height: 1.7;
+      margin-bottom: 1.5rem;
+    }
+
+    /* ── Verdict + confidence ── */
+    .verdict-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.2rem;
+      flex-wrap: wrap;
+    }
+    .verdict-badge {
+      display: inline-block;
+      padding: 0.35rem 1rem;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.04em;
+      border: 1.5px solid transparent;
+    }
+    .verdict-FULLY_RESOLVED     { background: #dcfce7; color: #15803d; border-color: #86efac; }
+    .verdict-PARTIALLY_RESOLVED { background: #fef9c3; color: #854d0e; border-color: #fde047; }
+    .verdict-NOT_RESOLVED       { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+
+    .confidence-widget {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      color: #64748b;
+      flex: 1;
+      min-width: 160px;
+    }
+    .confidence-bar-bg { flex: 1; background: #e2e8f0; border-radius: 999px; height: 6px; }
+    .confidence-bar-fill { height: 6px; border-radius: 999px; background: #6366f1; transition: width 0.4s ease; }
+
+    /* ── Addressed items ── */
+    .addressed-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .addressed-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      background: #f0fdf4;
+      border: 1px solid #86efac;
+      border-radius: 6px;
+      padding: 0.3rem 0.7rem;
+      font-size: 0.83rem;
+      color: #166534;
+    }
+    .addressed-item::before { content: "✓"; font-weight: 700; }
+
+    /* ── Section headers ── */
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      margin-top: 1.4rem;
+    }
+    .section-header:first-of-type { margin-top: 0; }
+    .section-header h3 {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #94a3b8;
+    }
+    .section-count {
+      font-size: 0.72rem;
+      background: #f1f5f9;
+      color: #64748b;
+      border: 1px solid #e2e8f0;
+      border-radius: 999px;
+      padding: 0.1rem 0.5rem;
+      font-weight: 600;
+    }
+
+    /* ── Findings table ── */
+    .findings-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+      table-layout: fixed;
+    }
+    .findings-table col.col-id   { width: 3.5rem; }
+    .findings-table col.col-file { width: 11rem; }
+    /* col-desc fills remaining width automatically */
+
+    .findings-table th {
+      text-align: left;
+      color: #94a3b8;
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 2px solid #f1f5f9;
+    }
+    .findings-table td {
+      padding: 0.75rem;
+      vertical-align: top;
+      border-bottom: 1px solid #f1f5f9;
+      line-height: 1.5;
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+    .findings-table tr:last-child td { border-bottom: none; }
+    .findings-table tbody tr:hover td { background: #f8fafc; }
+
+    .finding-id { font-family: monospace; font-weight: 700; font-size: 0.85rem; }
+    .sev-CRITICAL .finding-id { color: #dc2626; }
+    .sev-HIGH     .finding-id { color: #ea580c; }
+    .sev-MEDIUM   .finding-id { color: #ca8a04; }
+    .sev-LOW      .finding-id { color: #16a34a; }
+
+    /* file:line — allow wrapping, no nowrap */
+    .file-loc {
+      font-family: monospace;
+      font-size: 0.78rem;
+      color: #6366f1;
+      overflow-wrap: break-word;
+      word-break: break-all;
+    }
+    .no-location { color: #94a3b8; font-size: 0.78rem; font-style: italic; }
+
+    .finding-desc { color: #1e293b; margin-bottom: 0.4rem; }
+    .finding-rec {
+      color: #475569;
+      font-size: 0.83rem;
+      border-left: 2px solid #c7d2fe;
+      padding-left: 0.6rem;
+      margin-top: 0.4rem;
+    }
+    .finding-rec::before { content: "→ "; color: #6366f1; font-weight: 700; }
+
+    /* ── Severity group headers ── */
+    .sev-group-header td {
+      padding: 0.6rem 0.75rem 0.25rem;
+      border-bottom: none;
+      background: #f8fafc;
+    }
+    .sev-label {
+      display: inline-block;
+      padding: 0.2rem 0.75rem;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      border: 1px solid transparent;
+    }
+    .sev-label-CRITICAL { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+    .sev-label-HIGH     { background: #ffedd5; color: #9a3412; border-color: #fdba74; }
+    .sev-label-MEDIUM   { background: #fef9c3; color: #854d0e; border-color: #fde047; }
+    .sev-label-LOW      { background: #dcfce7; color: #166534; border-color: #86efac; }
+
+    /* ── Unrelated changes ── */
+    .tag-list { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .tag {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 0.25rem 0.65rem;
+      font-size: 0.82rem;
+      color: #475569;
+    }
+
+    /* ── History note ── */
+    #history-note {
+      display: none;
+      background: #f0f9ff;
+      border: 1px solid #bae6fd;
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      color: #0369a1;
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+    }
+
+    /* ── Loading & error ── */
+    #loading { display: none; color: #64748b; font-size: 0.9rem; margin-top: 0.8rem; }
+    #error-msg { display: none; color: #dc2626; font-size: 0.9rem; margin-top: 0.8rem; }
+
+    /* ── Tab navigation ── */
+    .tab-nav {
+      display: flex;
+      gap: 0.25rem;
+      margin-bottom: 1.75rem;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 0;
+    }
+    .tab-btn {
+      padding: 0.6rem 1.4rem;
+      border: none;
+      background: none;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #64748b;
+      cursor: pointer;
+      border-radius: 8px 8px 0 0;
+      margin-bottom: -2px;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+      font-family: inherit;
+    }
+    .tab-btn:hover { color: #4338ca; }
+    .tab-btn.active { color: #4338ca; border-bottom-color: #6366f1; }
+
+    /* ── Chat UI ── */
+    #chat-section { display: none; }
+    .chat-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 1rem;
+    }
+    .btn-ghost {
+      background: none;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 0.4rem 0.9rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #64748b;
+      cursor: pointer;
+      font-family: inherit;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-ghost:hover { border-color: #a5b4fc; color: #4338ca; }
+
+    .chat-messages {
+      min-height: 300px;
+      max-height: 520px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+      margin-bottom: 1rem;
+    }
+    .chat-empty {
+      color: #94a3b8;
+      font-size: 0.9rem;
+      text-align: center;
+      padding: 3rem 0;
+    }
+    .chat-bubble {
+      max-width: 80%;
+      padding: 0.7rem 1rem;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .chat-bubble.user {
+      background: #6366f1;
+      color: #fff;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+    .chat-bubble.assistant {
+      background: #f1f5f9;
+      color: #1e293b;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+    .chat-bubble.thinking {
+      background: #f1f5f9;
+      color: #94a3b8;
+      font-style: italic;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+
+    .chat-input-row {
+      display: flex;
+      gap: 0.6rem;
+      align-items: flex-end;
+    }
+    .chat-input-row textarea {
+      flex: 1;
+      min-height: 48px;
+      max-height: 160px;
+      resize: none;
+      overflow-y: auto;
+    }
+    .btn-send {
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.65rem 1.3rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      font-family: inherit;
+      transition: background 0.15s, opacity 0.15s;
+      flex-shrink: 0;
+    }
+    .btn-send:hover { background: #4f46e5; }
+    .btn-send:disabled { opacity: 0.5; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <h1>🔍 MR Reviewer</h1>
+  <p class="subtitle">AI-powered pre-push code review — analyze your local branch against a GitLab issue before you push.</p>
+
+  <!-- ── Tab navigation ── -->
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="review">📋 Review</button>
+    <button class="tab-btn" data-tab="chat">💬 Chat with AI</button>
+  </nav>
+
+  <!-- ── Review section ── -->
+  <div id="review-section">
+
+  <!-- ── Form ── -->
+  <div class="card">
+    <h2>Review Configuration</h2>
+    <form id="review-form">
+
+      <!-- Project picker -->
+      <div class="form-row">
+        <label>Project <span class="required">*</span></label>
+        <div class="project-picker">
+          <button type="button" class="proj-btn active" data-proj="core">
+            Core
+            <span class="proj-url">acs-core/-/issues/…</span>
+          </button>
+          <button type="button" class="proj-btn" data-proj="ui">
+            UI (Admin)
+            <span class="proj-url">acs-admin/-/issues/…</span>
+          </button>
+          <button type="button" class="proj-btn" data-proj="custom">
+            Custom URL
+          </button>
+        </div>
+      </div>
+
+      <!-- Issue number (Core / UI mode) -->
+      <div class="form-row" id="issue-num-row">
+        <label for="issueNumber">Issue Number <span class="required">*</span></label>
+        <input type="number" id="issueNumber" min="1" placeholder="e.g. 701"/>
+      </div>
+
+      <!-- Full URL (Custom mode) -->
+      <div class="form-row" id="custom-url-row" style="display:none;">
+        <label for="customUrl">GitLab Issue URL <span class="required">*</span></label>
+        <input type="text" id="customUrl"
+               placeholder="https://gitlab.example.com/group/project/-/issues/42"/>
+      </div>
+
+      <!-- Reviewer skills -->
+      <div class="form-row">
+        <label for="reviewerSkills">Reviewer Skills / Focus Areas</label>
+        <textarea id="reviewerSkills" name="reviewerSkills"
+                  placeholder="Leave blank to use the default skill set"></textarea>
+        <div style="margin-top:0.4rem; display:flex; justify-content:flex-end;">
+          <button type="button" id="reset-skills"
+                  style="background:none;border:none;color:#6366f1;font-size:0.8rem;cursor:pointer;padding:0;font-family:inherit;">
+            ↺ Reset to defaults
+          </button>
+        </div>
+      </div>
+
+      <button type="submit" id="submit-btn">Run Review</button>
+      <div id="loading">⏳ Analyzing your branch… this may take a few seconds.</div>
+      <div id="error-msg"></div>
+    </form>
+  </div>
+
+  <!-- ── Result ── -->
+  <div class="card" id="result">
+    <h2>Review Report</h2>
+
+    <div id="history-note"></div>
+
+    <!-- Executive summary -->
+    <div class="exec-summary" id="exec-summary"></div>
+
+    <!-- Verdict + confidence -->
+    <div class="verdict-row">
+      <div id="verdict-badge" class="verdict-badge"></div>
+      <div class="confidence-widget">
+        <span>Confidence:</span>
+        <strong id="confidence-pct"></strong>
+        <div class="confidence-bar-bg">
+          <div class="confidence-bar-fill" id="confidence-bar" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Addressed items -->
+    <div id="addressed-section">
+      <div class="section-header">
+        <h3>Addressed Items</h3>
+        <span class="section-count" id="addressed-count"></span>
+      </div>
+      <div class="addressed-grid" id="addressed-list"></div>
+    </div>
+
+    <!-- Findings table -->
+    <div id="findings-section">
+      <div class="section-header">
+        <h3>New Findings</h3>
+        <span class="section-count" id="findings-count"></span>
+      </div>
+      <table class="findings-table" id="findings-table">
+        <colgroup>
+          <col class="col-id"/>
+          <col class="col-file"/>
+          <col class="col-desc"/>
+        </colgroup>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>File : Line</th>
+            <th>Description &amp; Recommendation</th>
+          </tr>
+        </thead>
+        <tbody id="findings-body"></tbody>
+      </table>
+    </div>
+
+    <!-- Unrelated changes -->
+    <div id="unrelated-section" style="margin-top:1.4rem;">
+      <div class="section-header">
+        <h3>Unrelated Changes</h3>
+        <span class="section-count" id="unrelated-count"></span>
+      </div>
+      <div class="tag-list" id="unrelated-list"></div>
+    </div>
+
+  </div><!-- end review result card -->
+
+  </div><!-- end review-section -->
+
+  <!-- ── Chat section ── -->
+  <div id="chat-section">
+    <div class="card">
+      <div class="chat-toolbar">
+        <button type="button" class="btn-ghost" id="new-session-btn">✦ New Session</button>
+      </div>
+      <div class="chat-messages" id="chat-messages">
+        <div class="chat-empty" id="chat-empty">Ask anything — start a new conversation with the AI.</div>
+      </div>
+      <div class="chat-input-row">
+        <textarea id="chat-input" placeholder="Type your message… (Shift+Enter for newline)" rows="2"></textarea>
+        <button type="button" class="btn-send" id="chat-send-btn">Send ➤</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end container -->
+
+<script>
+  // ── Project presets ──────────────────────────────────────────────────────────
+  // Update these base URLs to match your GitLab instance and project paths.
+  const PROJECT_BASES = {
+    core: "https://git.creative.com.au/gpayments/acs-ds-sim/acs-core/-/issues/",
+    ui:   "https://git.creative.com.au/gpayments/acs-ds-sim/acs-admin/-/issues/",
+  };
+
+  let selectedProject = "core";
+
+  document.querySelectorAll(".proj-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".proj-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      selectedProject = btn.dataset.proj;
+      const isCustom = selectedProject === "custom";
+      document.getElementById("issue-num-row").style.display  = isCustom ? "none"  : "block";
+      document.getElementById("custom-url-row").style.display = isCustom ? "block" : "none";
+    });
+  });
+
+  function buildIssueUrl() {
+    if (selectedProject === "custom") {
+      return document.getElementById("customUrl").value.trim();
+    }
+    const raw = document.getElementById("issueNumber").value.trim();
+    const num = parseInt(raw, 10);
+    if (!raw || isNaN(num) || num < 1) return null;
+    return PROJECT_BASES[selectedProject] + num;
+  }
+
+  // ── Default skills ───────────────────────────────────────────────────────────
+  const DEFAULT_SKILLS =
+    "Security vulnerabilities, Performance, Code quality and readability, " +
+    "Test coverage, SOLID principles, Design patterns, Error handling, " +
+    "API contract correctness, Naming conventions";
+
+  const skillsField = document.getElementById("reviewerSkills");
+  skillsField.value = DEFAULT_SKILLS;
+
+  document.getElementById("reset-skills").addEventListener("click", () => {
+    skillsField.value = DEFAULT_SKILLS;
+  });
+
+  // ── Form submit ──────────────────────────────────────────────────────────────
+  let reviewCount = {};
+
+  document.getElementById("review-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const issueUrl       = buildIssueUrl();
+    const reviewerSkills = skillsField.value.trim();
+    const submitBtn      = document.getElementById("submit-btn");
+    const loading        = document.getElementById("loading");
+    const errorDiv       = document.getElementById("error-msg");
+    const resultCard     = document.getElementById("result");
+
+    if (!issueUrl) {
+      errorDiv.textContent = "❌ Please enter a valid issue number (or full URL for Custom mode).";
+      errorDiv.style.display = "block";
+      return;
+    }
+
+    submitBtn.disabled = true;
+    loading.style.display = "block";
+    errorDiv.style.display = "none";
+    resultCard.style.display = "none";
+
+    try {
+      const resp = await fetch("/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ issueUrl, reviewerSkills }),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`Server returned ${resp.status}: ${text}`);
+      }
+
+      const data = await resp.json();
+      reviewCount[issueUrl] = (reviewCount[issueUrl] || 0) + 1;
+      renderResult(data, issueUrl, reviewCount[issueUrl]);
+
+    } catch (err) {
+      errorDiv.textContent = "❌ " + err.message;
+      errorDiv.style.display = "block";
+    } finally {
+      submitBtn.disabled = false;
+      loading.style.display = "none";
+    }
+  });
+
+  // ── Render result ────────────────────────────────────────────────────────────
+  function renderResult(data, issueUrl, cycle) {
+    const resultCard = document.getElementById("result");
+    resultCard.style.display = "block";
+
+    // History note
+    const histNote = document.getElementById("history-note");
+    if (cycle > 1) {
+      histNote.textContent =
+        `📋 This is review cycle #${cycle} for this issue. Past review history has been included in the analysis.`;
+      histNote.style.display = "block";
+    } else {
+      histNote.style.display = "none";
+    }
+
+    // Executive summary
+    document.getElementById("exec-summary").textContent = data.summary || "";
+
+    // Verdict
+    const badge = document.getElementById("verdict-badge");
+    badge.textContent = data.verdict.replace(/_/g, " ");
+    badge.className = "verdict-badge verdict-" + data.verdict;
+
+    // Confidence
+    const pct = Math.round((data.confidence || 0) * 100);
+    document.getElementById("confidence-pct").textContent = pct + "%";
+    document.getElementById("confidence-bar").style.width = pct + "%";
+
+    // Addressed items
+    const addressedItems = data.addressed_items || [];
+    const totalItems = data.total_items || 0;
+    const addressedSection = document.getElementById("addressed-section");
+    const addressedList = document.getElementById("addressed-list");
+    addressedList.innerHTML = "";
+    document.getElementById("addressed-count").textContent =
+      addressedItems.length + (totalItems > 0 ? " / " + totalItems : "");
+
+    if (addressedItems.length > 0) {
+      addressedSection.style.display = "block";
+      addressedItems.forEach(item => {
+        const span = document.createElement("span");
+        span.className = "addressed-item";
+        span.textContent = item;
+        addressedList.appendChild(span);
+      });
+    } else {
+      addressedSection.style.display = "none";
+    }
+
+    // Findings table — grouped by severity
+    const gaps = data.gaps || [];
+    const findingsSection = document.getElementById("findings-section");
+    const findingsBody = document.getElementById("findings-body");
+    findingsBody.innerHTML = "";
+    document.getElementById("findings-count").textContent = gaps.length;
+
+    if (gaps.length > 0) {
+      findingsSection.style.display = "block";
+      const SEV_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
+      const grouped = {};
+      SEV_ORDER.forEach(s => grouped[s] = []);
+      gaps.forEach(f => {
+        const sev = (f.severity || "MEDIUM").toUpperCase();
+        if (!grouped[sev]) grouped[sev] = [];
+        grouped[sev].push(f);
+      });
+
+      SEV_ORDER.forEach(sev => {
+        const items = grouped[sev];
+        if (!items || items.length === 0) return;
+
+        // Severity group header row
+        const hdrRow = document.createElement("tr");
+        hdrRow.className = "sev-group-header";
+        const hdrCell = document.createElement("td");
+        hdrCell.colSpan = 3;
+        hdrCell.innerHTML = `<span class="sev-label sev-label-${sev}">${sev}</span>`;
+        hdrRow.appendChild(hdrCell);
+        findingsBody.appendChild(hdrRow);
+
+        items.forEach(f => {
+          const tr = document.createElement("tr");
+          tr.className = "sev-" + sev;
+
+          // ID cell
+          const tdId = document.createElement("td");
+          tdId.innerHTML = `<span class="finding-id">${escapeHtml(f.id || "")}</span>`;
+
+          // File:line cell (wraps naturally via CSS word-break)
+          const tdFile = document.createElement("td");
+          if (f.file_location) {
+            tdFile.innerHTML = `<span class="file-loc">${escapeHtml(f.file_location)}</span>`;
+          } else {
+            tdFile.innerHTML = `<span class="no-location">—</span>`;
+          }
+
+          // Description + recommendation cell
+          const tdDesc = document.createElement("td");
+          let inner = `<div class="finding-desc">${escapeHtml(f.description || "")}</div>`;
+          if (f.recommendation) {
+            inner += `<div class="finding-rec">${escapeHtml(f.recommendation)}</div>`;
+          }
+          tdDesc.innerHTML = inner;
+
+          tr.appendChild(tdId);
+          tr.appendChild(tdFile);
+          tr.appendChild(tdDesc);
+          findingsBody.appendChild(tr);
+        });
+      });
+    } else {
+      findingsSection.style.display = "none";
+    }
+
+    // Unrelated changes
+    const unrelatedList = document.getElementById("unrelated-list");
+    unrelatedList.innerHTML = "";
+    const unrelatedSection = document.getElementById("unrelated-section");
+    const unrelated = data.unrelated_changes || [];
+    document.getElementById("unrelated-count").textContent = unrelated.length;
+
+    if (unrelated.length > 0) {
+      unrelatedSection.style.display = "block";
+      unrelated.forEach(f => {
+        const span = document.createElement("span");
+        span.className = "tag";
+        span.textContent = f;
+        unrelatedList.appendChild(span);
+      });
+    } else {
+      unrelatedSection.style.display = "none";
+    }
+
+    resultCard.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  // ── Tab navigation ──────────────────────────────────────────────────────────
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const tab = btn.dataset.tab;
+      document.getElementById("review-section").style.display = tab === "review" ? "block" : "none";
+      document.getElementById("chat-section").style.display   = tab === "chat"   ? "block" : "none";
+    });
+  });
+
+  // ── Chat ─────────────────────────────────────────────────────────────────────
+  let chatSessionId = null;
+
+  const chatMessages  = document.getElementById("chat-messages");
+  const chatInput     = document.getElementById("chat-input");
+  const chatSendBtn   = document.getElementById("chat-send-btn");
+  const chatEmpty     = document.getElementById("chat-empty");
+  const newSessionBtn = document.getElementById("new-session-btn");
+
+  function appendBubble(role, text) {
+    chatEmpty.style.display = "none";
+    const div = document.createElement("div");
+    div.className = "chat-bubble " + role;
+    div.textContent = text;
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    return div;
+  }
+
+  async function sendChatMessage() {
+    const text = chatInput.value.trim();
+    if (!text) return;
+
+    chatInput.value = "";
+    chatInput.style.height = "";
+    chatSendBtn.disabled = true;
+
+    appendBubble("user", text);
+    const thinking = appendBubble("thinking", "⏳ Thinking…");
+
+    try {
+      const resp = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: chatSessionId, message: text }),
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`Server returned ${resp.status}: ${errText}`);
+      }
+
+      const data = await resp.json();
+      chatSessionId = data.sessionId;
+
+      thinking.className = "chat-bubble assistant";
+      thinking.textContent = data.reply;
+    } catch (err) {
+      thinking.className = "chat-bubble assistant";
+      thinking.textContent = "❌ " + err.message;
+    } finally {
+      chatSendBtn.disabled = false;
+      chatInput.focus();
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+  }
+
+  chatSendBtn.addEventListener("click", sendChatMessage);
+
+  chatInput.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendChatMessage();
+    }
+  });
+
+  // Auto-grow textarea
+  chatInput.addEventListener("input", () => {
+    chatInput.style.height = "auto";
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 160) + "px";
+  });
+
+  newSessionBtn.addEventListener("click", async () => {
+    if (chatSessionId) {
+      try {
+        await fetch("/chat/" + encodeURIComponent(chatSessionId), { method: "DELETE" });
+      } catch (_) { /* ignore */ }
+    }
+    chatSessionId = null;
+    chatMessages.innerHTML = "";
+    chatMessages.appendChild(chatEmpty);
+    chatEmpty.style.display = "block";
+    chatInput.value = "";
+    chatInput.style.height = "";
+    chatInput.focus();
+  });
+</script>
+</body>
+</html>
